@@ -360,7 +360,7 @@ Trade-off da camada gratuita: o limite diário é baixo (≈20 requisições por
 - **Banco:** o schema e os dados de exemplo entram com `pnpm db:migrate` e `pnpm db:seed`, apontando `DATABASE_URL` para o Neon. O seed é idempotente.
 - **Proteção de chaves e de custo:**
   - chaves só em variáveis de ambiente (`.env.local` está no `.gitignore`);
-  - 30 mensagens por conversa e 150 por funcionário em 24 h (decisões 27 e 28);
+  - 30 mensagens por conversa e 150 por funcionário em 24 h (decisões 14 e 28);
   - `maxDuration` de 60 s na rota de mensagens, no máximo 8 passos de ferramenta por mensagem e teto de 4096 tokens de saída por passo;
   - o modelo escolhido no seletor só vale se estiver na lista do servidor (`LLM_MODEL_OPTIONS`);
   - cabeçalhos de segurança básicos (`next.config.ts`).
