@@ -18,8 +18,12 @@ export interface TraceAction {
   readonly id: string;
   /** Technical identifier of the tool, e.g. "consultar_meus_chamados". */
   readonly tool: string;
-  /** Short human label shown in the chip, e.g. "consultou seus chamados". */
-  readonly label: string;
+  /**
+   * Short human labels shown as chips, e.g. "consultou seus chamados". One tool
+   * call can do several things (check duplicates, classify, compute the SLA),
+   * so it yields several chips but a single entry in the detail panel.
+   */
+  readonly labels: readonly string[];
   readonly status: "ok" | "error";
   /** Sanitised summary of what was asked (never secrets). */
   readonly input: unknown;

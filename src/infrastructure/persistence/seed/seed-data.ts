@@ -442,7 +442,7 @@ const seedTrace = (
   actions: labels.map((label, i) => ({
     id: `seed-act-${label}-${i}`,
     tool: "seed",
-    label,
+    labels: [label],
     status: "ok",
     input: {},
     output: {},

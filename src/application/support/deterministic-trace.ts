@@ -32,7 +32,7 @@ export function deterministicTrace(
   const actions: TraceAction[] = input.steps.map((step) => ({
     id: ids.next(),
     tool: step.tool,
-    label: step.label,
+    labels: [step.label],
     status: step.status ?? "ok",
     input: step.input,
     output: step.output,
