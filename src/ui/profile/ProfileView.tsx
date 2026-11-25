@@ -14,26 +14,33 @@ export function ProfileView({ user }: { user: UserDto }) {
 
   return (
     <div className="h-full overflow-y-auto px-4 py-10 sm:px-8">
-      <div className="mx-auto max-w-[520px]">
+      <div className="mx-auto max-w-[700px]">
         <h1 className="font-display text-3xl text-ink">Meu perfil</h1>
         <p className="mt-1 text-sm text-ink-3">Seus dados de acesso ao service desk de TI.</p>
 
         <section className="mt-8 overflow-hidden rounded-xl border border-rule bg-paper shadow-sm">
-          <dl>
-            <div className="flex items-center justify-between border-b border-rule px-5 py-4">
-              <dt className="text-sm text-ink-3">Nome</dt>
-              <dd className="text-sm text-ink">{user.name}</dd>
-            </div>
-            <div className="flex items-center justify-between px-5 py-4">
-              <dt className="text-sm text-ink-3">E-mail corporativo</dt>
-              <dd className="flex items-center gap-3 text-sm text-ink">
-                {user.email}
-                <span className="inline-flex items-center gap-1 text-[11px] text-ink-3">
-                  <Lock className="size-3" /> Gerenciado pela TI
-                </span>
-              </dd>
-            </div>
-          </dl>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-rule">
+              <tr>
+                <th scope="row" className="w-48 px-5 py-4 text-left font-normal text-ink-3">
+                  Nome
+                </th>
+                <td className="px-3 py-4 text-ink">{user.name}</td>
+                <td className="px-5 py-4" />
+              </tr>
+              <tr>
+                <th scope="row" className="w-48 px-5 py-4 text-left font-normal text-ink-3">
+                  E-mail corporativo
+                </th>
+                <td className="px-3 py-4 text-ink">{user.email}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-right text-[11px] text-ink-3">
+                  <span className="inline-flex items-center gap-1">
+                    <Lock className="size-3" /> Gerenciado pela TI
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </section>
 
         <section className="mt-5 overflow-hidden rounded-xl border border-rule bg-paper shadow-sm">

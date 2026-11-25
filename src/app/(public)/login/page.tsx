@@ -15,15 +15,15 @@ function Showcase() {
 
       <div>
         <p className="text-xs text-white/60">Service desk de TI da Nexo</p>
-        <h1 className="mt-4 max-w-[560px] font-display text-[56px] leading-[1.05] tracking-tight">
+        <h1 className="mt-4 font-display text-[56px] leading-[1.05] tracking-tight">
           Seu problema de TI, resolvido em uma conversa.
         </h1>
-        <p className="mt-6 max-w-[420px] text-[15px] leading-relaxed text-white/60">
+        <p className="mt-6 max-w-[540px] text-[15px] leading-relaxed text-white/60">
           Descreva o que está acontecendo. O assistente consulta seus chamados, busca na central de
           ajuda e chama um analista quando precisa.
         </p>
 
-        <div className="mt-12 w-full max-w-[440px] rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="mt-12 w-full max-w-[650px] rounded-2xl border border-white/10 bg-white/5 p-5 m-auto">
           <div className="ml-auto w-fit rounded-lg bg-white px-3.5 py-2 text-[13px] text-ink">
             Meu notebook não conecta na VPN. Erro 809.
           </div>
@@ -42,7 +42,7 @@ function Showcase() {
         </div>
       </div>
 
-      <dl className="grid max-w-[620px] grid-cols-3 gap-6 border-t border-white/15 pt-6">
+      <dl className="grid grid-cols-3 gap-6 border-t border-white/15 pt-6">
         {[
           ["8 s", "primeira resposta, em média"],
           ["72%", "resolvidos sem fila"],
