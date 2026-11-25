@@ -1,7 +1,5 @@
 import { config } from "dotenv";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
-import { migrate } from "drizzle-orm/neon-http/migrator";
+import { runMigrations } from "../src/infrastructure/persistence/migrate";
 
 config({ path: ".env.local" });
 config();
@@ -12,5 +10,5 @@ if (!url) {
   process.exit(1);
 }
 
-await migrate(drizzle({ client: neon(url) }), { migrationsFolder: "./drizzle" });
+await runMigrations(url);
 console.log("Migrações aplicadas.");

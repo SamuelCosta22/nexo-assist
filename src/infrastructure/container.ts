@@ -32,7 +32,7 @@ import {
 import { SendEmployeeMessage } from "@/application/use-cases/send-employee-message";
 import { MastraAgentAdapter } from "./agent/mastra-agent";
 import { getEnv } from "./config/env";
-import { createNeonDatabase } from "./persistence/database";
+import { createDatabase } from "./persistence/database";
 import { DrizzleConversationRepository } from "./persistence/repositories/conversation-repository";
 import { DrizzleHelpdeskRepository } from "./persistence/repositories/helpdesk-repository";
 import { DrizzleMessageRepository } from "./persistence/repositories/message-repository";
@@ -51,7 +51,7 @@ const uuidGenerator: IdGenerator = { next: () => randomUUID() };
  */
 function build() {
   const env = getEnv();
-  const db = createNeonDatabase(env.DATABASE_URL);
+  const db = createDatabase(env.DATABASE_URL);
   const clock = systemClock;
   const ids = uuidGenerator;
   const sla = new SlaPolicy();

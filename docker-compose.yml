@@ -1,0 +1,22 @@
+# Postgres local para desenvolvimento: `docker compose up -d`.
+# Em produção usamos Neon; o código escolhe o driver pela URL (ver database.ts).
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: nexo-assist-db
+    environment:
+      POSTGRES_USER: nexo
+      POSTGRES_PASSWORD: nexo
+      POSTGRES_DB: nexo_assist
+    ports:
+      - "54329:5432"
+    volumes:
+      - nexo-assist-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexo -d nexo_assist"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  nexo-assist-data:
