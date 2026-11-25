@@ -10,7 +10,7 @@ import { z } from "zod";
 const schema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória"),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, "GOOGLE_GENERATIVE_AI_API_KEY é obrigatória"),
-  LLM_MODEL: z.string().min(1).default("gemini-2.5-flash"),
+  LLM_MODEL: z.string().min(1).default("gemini-3.5-flash"),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET deve ter ao menos 32 caracteres"),
   TICKETING_FAILURE_RATE: z.coerce.number().min(0).max(1).default(0),
   CHAT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
