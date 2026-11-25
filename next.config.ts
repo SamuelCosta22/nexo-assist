@@ -8,6 +8,16 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  logging: {
+    incomingRequests: {
+      // Quiet the dev terminal: only the screens' background refreshes (polling) are
+      // hidden; chat messages (POST), pages and errors are still logged.
+      ignore: [
+        /^\/api\/(console\/)?conversations(\/[^/]+)?(\/tickets)?$/,
+        /^\/api\/conversations$/,
+      ],
+    },
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
