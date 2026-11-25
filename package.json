@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx scripts/seed.mts"
+    "db:seed": "tsx scripts/seed.mts",
+    "eval": "tsx scripts/eval-agent.mts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.126",
