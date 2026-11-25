@@ -39,7 +39,10 @@ export function rankArticles(
       if (tags.has(token)) raw += TAG_WEIGHT;
       if (body.has(token)) raw += BODY_WEIGHT;
     }
-    return { article, score: raw / (queryTokens.length * (TITLE_WEIGHT + TAG_WEIGHT + BODY_WEIGHT)) };
+    return {
+      article,
+      score: raw / (queryTokens.length * (TITLE_WEIGHT + TAG_WEIGHT + BODY_WEIGHT)),
+    };
   });
 
   return ranked
