@@ -192,17 +192,18 @@ export function assumeConversation(
   });
 }
 
-function requireOwner(
+/** Only the analyst who assumed a conversation may answer, hand back or close it. */
+export function ensureAssignedAnalyst(
   conversation: Conversation,
   analystId: string,
-): InvalidTransitionError | NotAuthorizedError | undefined {
+): Result<Conversation, InvalidTransitionError | NotAuthorizedError> {
   if (conversation.status !== "with_analyst") {
-    return new InvalidTransitionError("Nenhum analista está atendendo esta conversa.");
+    return err(new InvalidTransitionError("Nenhum analista está atendendo esta conversa."));
   }
   if (conversation.assignedAnalystId !== analystId) {
-    return new NotAuthorizedError("Esta conversa está com outro analista.");
+    return err(new NotAuthorizedError("Esta conversa está com outro analista."));
   }
-  return undefined;
+  return ok(conversation);
 }
 
 export function handBackToAgent(
@@ -210,8 +211,8 @@ export function handBackToAgent(
   analystId: string,
   now: Date,
 ): Result<Conversation, InvalidTransitionError | NotAuthorizedError> {
-  const problem = requireOwner(conversation, analystId);
-  if (problem) return err(problem);
+  const owned = ensureAssignedAnalyst(conversation, analystId);
+  if (!owned.ok) return owned;
   return ok({ ...backToAgent(conversation), updatedAt: now });
 }
 
@@ -220,8 +221,8 @@ export function closeConversation(
   analystId: string,
   now: Date,
 ): Result<Conversation, InvalidTransitionError | NotAuthorizedError> {
-  const problem = requireOwner(conversation, analystId);
-  if (problem) return err(problem);
+  const owned = ensureAssignedAnalyst(conversation, analystId);
+  if (!owned.ok) return owned;
   return ok({ ...conversation, status: "closed", updatedAt: now });
 }
 
