@@ -106,6 +106,29 @@ export class SendEmployeeMessage {
     });
   }
 
+  /**
+   * Re-runs the agent for the employee's last message after a failure, without
+   * saving it again or spending another message of the limit. Only allowed
+   * while the agent owns the conversation and nobody has answered yet.
+   */
+  async beginRetry(
+    actor: User,
+    conversationId: string,
+  ): Promise<Result<MessageTurn, InvalidMessageError>> {
+    assertIsEmployee(actor);
+    const { conversations, messages } = this.deps;
+    const conversation = await loadAuthorizedConversation(conversations, actor, conversationId);
+    const [last] = await messages.listRecent(conversation.id, 1);
+    if (!canAgentReply(conversation) || last?.role !== "employee") {
+      return err(new InvalidMessageError("Não há nada para tentar de novo nesta conversa."));
+    }
+    return ok({
+      userMessage: last,
+      conversation,
+      run: (signal) => this.run(actor, conversation, signal),
+    });
+  }
+
   private async *run(
     employee: User,
     conversation: Conversation,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentTrace } from "@/domain/agent/trace";
 import { startConversation, type Conversation } from "@/domain/conversation/conversation";
 import type { AgentEvent, AgentPort, AgentTurn } from "@/application/ports/agent";
-import type { ChatEvent } from "@/application/use-cases/send-employee-message";
+import { SendEmployeeMessage, type ChatEvent } from "@/application/use-cases/send-employee-message";
 import { ana, carla } from "../support/in-memory";
 import { buildHarness } from "../support/harness";
 
@@ -33,6 +33,20 @@ class ScriptedAgent implements AgentPort {
     yield { type: "text_delta", text: "Olá" };
     yield { type: "done", text: "Olá, Ana!", blocks: [], trace: traceWith(this.confidence) };
   }
+}
+
+function buildHarnessSend(h: Awaited<ReturnType<typeof setup>>, agent: ScriptedAgent) {
+  return new SendEmployeeMessage({
+    conversations: h.conversations,
+    messages: h.messages,
+    pendingActions: h.pendingActions,
+    agent,
+    toolboxFor: h.toolboxFor,
+    handoff: h.handoff,
+    clock: h.clock,
+    ids: h.ids,
+    messageLimit: 30,
+  });
 }
 
 async function collect(stream: AsyncGenerator<ChatEvent>) {
@@ -147,5 +161,49 @@ describe("SendEmployeeMessage", () => {
     if (!begun.ok) throw begun.error;
     await collect(begun.value.run());
     expect(agent.turns[0]?.history).toHaveLength(20);
+  });
+
+  describe("retry after a failure", () => {
+    it("re-runs the agent for the same message without duplicating it or spending the limit", async () => {
+      const failing = new ScriptedAgent(0.9, true);
+      const h = await setup(failing);
+      const first = await h.send!.begin(ana, "c1", "Oi");
+      if (!first.ok) throw first.error;
+      await collect(first.value.run());
+      expect(h.messages.rows).toHaveLength(1);
+
+      const working = new ScriptedAgent();
+      const retry = await buildHarnessSend(h, working).beginRetry(ana, "c1");
+      if (!retry.ok) throw retry.error;
+      const events = await collect(retry.value.run());
+
+      expect(events.map((e) => e.type)).toContain("agent_message");
+      expect(h.messages.rows.map((m) => m.role)).toEqual(["employee", "agent"]);
+      expect((await h.conversations.findById("c1"))?.employeeMessageCount).toBe(1);
+    });
+
+    it("refuses when the last message already has an answer", async () => {
+      const h = await setup(new ScriptedAgent());
+      const first = await h.send!.begin(ana, "c1", "Oi");
+      if (!first.ok) throw first.error;
+      await collect(first.value.run());
+      expect((await h.send!.beginRetry(ana, "c1")).ok).toBe(false);
+    });
+
+    it("refuses while the conversation is with an analyst", async () => {
+      const h = await setup(new ScriptedAgent(), {
+        status: "with_analyst",
+        assignedAnalystId: "an-rafael",
+      });
+      await h.messages.append({
+        id: "m",
+        conversationId: "c1",
+        role: "employee",
+        content: "oi",
+        blocks: [],
+        createdAt: h.clock.now(),
+      });
+      expect((await h.send!.beginRetry(ana, "c1")).ok).toBe(false);
+    });
   });
 });

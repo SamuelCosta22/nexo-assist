@@ -9,7 +9,11 @@ import { errorResponse, respond } from "../../../../_server/http";
 // The agent can take a while (several model calls); allow it on serverless hosts.
 export const maxDuration = 60;
 
-const body = z.object({ content: z.string() });
+const body = z.union([
+  z.object({ content: z.string() }),
+  /** Re-run the agent for the last message after a failure. */
+  z.object({ retry: z.literal(true) }),
+]);
 
 const encoder = new TextEncoder();
 const frame = (event: ChatStreamEvent) =>
@@ -36,9 +40,13 @@ export function POST(request: Request, context: RouteContext<"/api/conversations
   return respond(async () => {
     const user = await requireApiUser("employee");
     const { id } = await context.params;
-    const { content } = body.parse(await request.json());
+    const input = body.parse(await request.json());
 
-    const begun = await getContainer().sendEmployeeMessage.begin(user, id, content);
+    const { sendEmployeeMessage } = getContainer();
+    const begun =
+      "retry" in input
+        ? await sendEmployeeMessage.beginRetry(user, id)
+        : await sendEmployeeMessage.begin(user, id, input.content);
     if (!begun.ok) return errorResponse(begun.error);
     const turn = begun.value;
 
