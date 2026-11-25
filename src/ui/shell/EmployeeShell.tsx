@@ -56,8 +56,8 @@ export function EmployeeShell({
   const pathname = usePathname();
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
-  const onChat = pathname.startsWith("/atendimento");
-  const onProfile = pathname.startsWith("/perfil");
+  const onChat = pathname.startsWith("/chat");
+  const onProfile = pathname.startsWith("/profile");
 
   // Fresh list after every chat action, and now and then for changes made by an analyst.
   useEffect(() => {
@@ -94,10 +94,10 @@ export function EmployeeShell({
         </div>
 
         <nav className="space-y-1 px-3" aria-label="Principal">
-          <NavLink href="/atendimento" active={onChat} icon={<MessageSquare className="size-4" />}>
+          <NavLink href="/chat" active={onChat} icon={<MessageSquare className="size-4" />}>
             Atendimento
           </NavLink>
-          <NavLink href="/perfil" active={onProfile} icon={<User className="size-4" />}>
+          <NavLink href="/profile" active={onProfile} icon={<User className="size-4" />}>
             Meu perfil
           </NavLink>
         </nav>
@@ -108,7 +108,7 @@ export function EmployeeShell({
               Conversas
             </h2>
             <Link
-              href="/atendimento"
+              href="/chat"
               className="rounded p-1 text-ink-3 hover:bg-desk hover:text-cta"
               aria-label="Nova conversa"
               title="Nova conversa"
@@ -121,7 +121,7 @@ export function EmployeeShell({
               <li className="px-3 py-2 text-xs text-ink-3">Nenhuma conversa ainda.</li>
             )}
             {conversations.map(({ conversation }) => {
-              const href = `/atendimento/${conversation.id}`;
+              const href = `/chat/${conversation.id}`;
               const active = pathname === href;
               return (
                 <li key={conversation.id}>
@@ -167,14 +167,14 @@ export function EmployeeShell({
           <div className="flex items-center gap-1 md:hidden">
             <NexoMark size={20} className="mr-2 text-cta" />
             <Link
-              href="/atendimento"
+              href="/chat"
               aria-label="Nova conversa"
               className="rounded-md p-2 text-ink-2 hover:bg-desk"
             >
               <MessageSquarePlus className="size-4" />
             </Link>
             <Link
-              href="/perfil"
+              href="/profile"
               aria-label="Meu perfil"
               className="rounded-md p-2 text-ink-2 hover:bg-desk"
             >

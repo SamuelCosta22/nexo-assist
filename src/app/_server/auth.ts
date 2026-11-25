@@ -37,8 +37,8 @@ export async function requireApiUser(role?: Role): Promise<User> {
 export async function requirePageUser(role: Role): Promise<User> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (user.role !== role) redirect(user.role === "analyst" ? "/console" : "/atendimento");
+  if (user.role !== role) redirect(user.role === "analyst" ? "/console" : "/chat");
   return user;
 }
 
-export const homeFor = (user: User) => (user.role === "analyst" ? "/console" : "/atendimento");
+export const homeFor = (user: User) => (user.role === "analyst" ? "/console" : "/chat");
