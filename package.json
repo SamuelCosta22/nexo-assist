@@ -13,7 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run lint && npm run test",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:studio": "drizzle-kit studio",
@@ -21,10 +21,8 @@
     "eval": "tsx scripts/eval-agent.mts"
   },
   "dependencies": {
-    "@ai-sdk/google": "^4.0.126",
     "@mastra/core": "^1.86.0",
     "@neondatabase/serverless": "^1.2.1",
-    "ai": "^7.0.181",
     "drizzle-orm": "^0.45.4",
     "jose": "^6.2.18",
     "lucide-react": "^1.80.0",
@@ -42,6 +40,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^5.1.1",
+    "ai": "^7.0.181",
     "dotenv": "^18.0.10",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
@@ -53,6 +52,8 @@
     "vitest": "^5.1.1"
   },
   "engines": {
-    "node": ">=20.19"
-  }
+    "node": ">=20.19",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.19.0"
 }

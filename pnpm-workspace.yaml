@@ -1,0 +1,5 @@
+# pnpm settings (pnpm 10 reads them from here). This is a single package, not a monorepo.
+
+# Only these dependencies may run install scripts (pnpm blocks the rest by default).
+onlyBuiltDependencies:
+  - esbuild
