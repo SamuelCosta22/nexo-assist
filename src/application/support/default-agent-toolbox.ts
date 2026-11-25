@@ -66,9 +66,12 @@ export class DefaultAgentToolbox implements AgentToolbox {
     const tickets = all
       .filter((ticket) => (input.onlyOpen ? isOpen(ticket) : true))
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    // The selectable list only offers open tickets (PRD, tela 3), even when the model
+    // fetched resolved ones too for context.
+    const selectable = tickets.filter(isOpen);
     const blocks: MessageBlock[] =
-      input.showList && tickets.length > 0
-        ? [{ type: "ticket_list", items: tickets.map(toSummary) }]
+      input.showList && selectable.length > 0
+        ? [{ type: "ticket_list", items: selectable.map(toSummary) }]
         : [];
     return {
       data: { tickets: tickets.map((ticket) => toSnapshot(ticket, sla, now)) },
