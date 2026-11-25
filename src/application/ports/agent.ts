@@ -12,6 +12,8 @@ export interface AgentTurn {
   readonly history: readonly Message[];
   readonly pendingAction?: PendingAction;
   readonly now: Date;
+  /** Model chosen for this turn (already validated against the allowlist); undefined = default. */
+  readonly model?: string;
   /** The only way the agent can touch the world; bound to this employee. */
   readonly toolbox: AgentToolbox;
 }

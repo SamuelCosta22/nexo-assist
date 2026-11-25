@@ -3,6 +3,7 @@
 import { AlertCircle, Headset, Lock, MessageSquarePlus, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useModelChoice, type ModelChoices } from "./useModelChoice";
 import type { AgentTrace, ConversationViewDto, UserDto } from "../api-types";
 import { TraceChips } from "../trace/TraceChips";
 import { TracePanel } from "../trace/TracePanel";
@@ -81,8 +82,17 @@ function StatusBanner({ view }: { view: ConversationViewDto }) {
   return null;
 }
 
-export function ChatView({ user, initial }: { user: UserDto; initial?: ConversationViewDto }) {
-  const chat = useEmployeeChat(user, initial);
+export function ChatView({
+  user,
+  initial,
+  models,
+}: {
+  user: UserDto;
+  initial?: ConversationViewDto;
+  models: ModelChoices;
+}) {
+  const [model, setModel] = useModelChoice(models);
+  const chat = useEmployeeChat(user, initial, model);
   const { view, streaming, error } = chat;
   const [trace, setTrace] = useState<AgentTrace | undefined>();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -170,13 +180,22 @@ export function ChatView({ user, initial }: { user: UserDto; initial?: Conversat
                 <div className="flex-1">
                   <p>{error.message}</p>
                   {error.retryable && (
-                    <button
-                      type="button"
-                      onClick={() => void chat.retry()}
-                      className="mt-2 inline-flex items-center gap-1.5 font-semibold underline"
-                    >
-                      <RotateCcw className="size-3.5" /> Tentar novamente
-                    </button>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <button
+                        type="button"
+                        onClick={() => void chat.retry()}
+                        className="inline-flex items-center gap-1.5 font-semibold underline"
+                      >
+                        <RotateCcw className="size-3.5" /> Tentar novamente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void chat.requestHuman()}
+                        className="inline-flex items-center gap-1.5 font-semibold underline"
+                      >
+                        <Headset className="size-3.5" /> Falar com um analista
+                      </button>
+                    </div>
                   )}
                 </div>
                 <button type="button" onClick={chat.dismissError} className="text-xs underline">
@@ -199,7 +218,7 @@ export function ChatView({ user, initial }: { user: UserDto; initial?: Conversat
                   continuar.
                 </p>
                 <Link
-                  href="/atendimento"
+                  href="/chat"
                   className="inline-flex items-center gap-1.5 rounded-md bg-cta px-3 py-1.5 text-sm font-semibold text-white"
                 >
                   <MessageSquarePlus className="size-4" /> Nova conversa
@@ -208,6 +227,16 @@ export function ChatView({ user, initial }: { user: UserDto; initial?: Conversat
             ) : (
               <Composer
                 disabled={Boolean(streaming)}
+                modelPicker={
+                  withHuman || models.options.length < 2
+                    ? undefined
+                    : {
+                        value: model,
+                        options: models.options,
+                        defaultModel: models.default,
+                        onChange: setModel,
+                      }
+                }
                 placeholder={withHuman ? "Escreva para o analista…" : "Escreva para o Nexo…"}
                 onSend={(text) => void chat.send(text)}
                 counter={`${count}/${limit} mensagens nesta sessão`}

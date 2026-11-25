@@ -26,14 +26,14 @@ export interface ChatError {
 }
 
 const POLL_MS = 3000;
-const AGENT_ERRORS = new Set(["AGENT_UNAVAILABLE", "AGENT_NO_RESPONSE"]);
+const AGENT_ERRORS = new Set(["AGENT_UNAVAILABLE", "AGENT_NO_RESPONSE", "AGENT_QUOTA_EXCEEDED"]);
 
 /**
  * All the client-side state of an employee conversation: optimistic sending,
  * the SSE stream (chips and text arriving live), draft actions, retry, and
  * polling while a human is involved.
  */
-export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
+export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto, model?: string) {
   const [view, setView] = useState<ConversationViewDto | null>(initial ?? null);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
   const [error, setError] = useState<ChatError | undefined>();
@@ -115,7 +115,7 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
     });
     setView({ conversation, employee: user, messages: [], pendingActions: {} });
     // Reflect the new conversation in the address bar without remounting mid-stream.
-    window.history.replaceState(null, "", `/atendimento/${conversation.id}`);
+    window.history.replaceState(null, "", `/chat/${conversation.id}`);
     return conversation;
   }, [user]);
 
@@ -139,7 +139,7 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
           createdAt: new Date().toISOString(),
         });
         try {
-          await stream(conversationId, { content }, optimisticId);
+          await stream(conversationId, { content, ...(model ? { model } : {}) }, optimisticId);
         } catch (cause) {
           // Rejected before saving (limit, empty...): take the optimistic message back.
           setView((current) =>
@@ -157,7 +157,7 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
         setStreaming(null);
       }
     },
-    [append, createConversation, fail, refresh, stream, streaming, user, view],
+    [append, createConversation, fail, refresh, model, stream, streaming, user, view],
   );
 
   const retry = useCallback(async () => {
@@ -166,7 +166,7 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
     setError(undefined);
     setStreaming({ text: "", steps: [] });
     try {
-      await stream(conversationId, { retry: true }, undefined);
+      await stream(conversationId, { retry: true, ...(model ? { model } : {}) }, undefined);
       await refresh(conversationId);
       notifyConversationsChanged();
     } catch (cause) {
@@ -174,7 +174,20 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
     } finally {
       setStreaming(null);
     }
-  }, [fail, refresh, stream, streaming, view]);
+  }, [fail, model, refresh, stream, streaming, view]);
+
+  /** "Falar com um analista" when the assistant cannot answer: no model involved. */
+  const requestHuman = useCallback(async () => {
+    if (!view) return;
+    setError(undefined);
+    try {
+      await api(`/api/conversations/${view.conversation.id}/handoff`, { method: "POST" });
+      await refresh(view.conversation.id);
+      notifyConversationsChanged();
+    } catch (cause) {
+      fail(cause);
+    }
+  }, [fail, refresh, view]);
 
   const afterAction = useCallback(async () => {
     if (view) await refresh(view.conversation.id);
@@ -252,6 +265,7 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
     busyActionId,
     send,
     retry,
+    requestHuman,
     confirm,
     cancel,
     edit,

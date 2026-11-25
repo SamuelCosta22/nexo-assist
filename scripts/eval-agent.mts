@@ -274,6 +274,7 @@ async function run(scenario: Scenario): Promise<{ outcome: Outcome; ms: number }
     messageLimit: 30,
     usage: new InMemoryUsage(h.messages),
     dailyLimit: 1000,
+    allowedModels: [],
   });
   await h.conversations.create(
     startConversation({ id: "c1", employeeId: ana.id, now: h.clock.now() }),

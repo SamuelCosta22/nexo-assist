@@ -25,6 +25,14 @@ export class TicketingUnavailableError extends DomainError {
   }
 }
 
+/** The model provider refused the call for quota/rate reasons: retrying right away is pointless. */
+export class AgentQuotaExceededError extends DomainError {
+  readonly code = "AGENT_QUOTA_EXCEEDED";
+  constructor() {
+    super("O assistente atingiu o limite de uso do modelo por agora.");
+  }
+}
+
 export class AgentUnavailableError extends DomainError {
   readonly code = "AGENT_UNAVAILABLE";
   constructor(detail?: string) {

@@ -1,7 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import type { AgentTrace } from "@/domain/agent/trace";
 import type { Message, MessageBlock } from "@/domain/conversation/message";
-import { AgentUnavailableError } from "@/application/errors";
+import { AgentQuotaExceededError, AgentUnavailableError } from "@/application/errors";
 import type { AgentEvent, AgentPort, AgentTurn } from "@/application/ports/agent";
 import type { IdGenerator } from "@/application/ports/id-generator";
 import { buildInstructions } from "./instructions";
@@ -11,10 +11,29 @@ import { buildTools, TurnRecorder } from "./tools";
 type ModelConfig = ConstructorParameters<typeof Agent>[0]["model"];
 
 export interface MastraAgentOptions {
+  /** Default model, used when the turn does not pick one. */
   readonly model: ModelConfig;
+  /** Builds the model config for a name chosen in the UI (e.g. "gemini-2.5-flash" -> "google/gemini-2.5-flash"). */
+  readonly forModel?: (name: string) => ModelConfig;
   /** Human-readable model name recorded in each trace. */
   readonly modelName: string;
   readonly ids: IdGenerator;
+  /** Automatic retries per model call (default 1). */
+  readonly maxRetries?: number;
+}
+
+/** Provider quota / rate-limit failures (HTTP 429, RESOURCE_EXHAUSTED, "quota exceeded"). */
+export function isQuotaFailure(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  const status = (error as { statusCode?: unknown } | null)?.statusCode;
+  return status === 429 || /RESOURCE_EXHAUSTED|quota|rate.?limit|too many requests/i.test(text);
+}
+
+function toAgentError(error: unknown): AgentQuotaExceededError | AgentUnavailableError {
+  if (error instanceof AgentQuotaExceededError || error instanceof AgentUnavailableError)
+    return error;
+  if (isQuotaFailure(error)) return new AgentQuotaExceededError();
+  return new AgentUnavailableError(error instanceof Error ? error.message : String(error));
 }
 
 /** Hard cap on the tool loop: bounds latency and cost per turn. */
@@ -105,7 +124,10 @@ export class MastraAgentAdapter implements AgentPort {
   constructor(private readonly options: MastraAgentOptions) {}
 
   async *respond(turn: AgentTurn, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
-    const { model, modelName, ids } = this.options;
+    const { ids, forModel } = this.options;
+    const picked = turn.model && forModel ? turn.model : undefined;
+    const model = picked && forModel ? forModel(picked) : this.options.model;
+    const modelName = picked ?? this.options.modelName;
     const recorder = new TurnRecorder(ids);
     const started = Date.now();
 
@@ -128,12 +150,23 @@ export class MastraAgentAdapter implements AgentPort {
     try {
       const output = await agent.stream(toModelMessages(turn.history), {
         maxSteps: MAX_STEPS,
-        modelSettings: { temperature: 0.2, maxOutputTokens: MAX_OUTPUT_TOKENS },
-        // Step 0 is forced to be the decision report: transparency is not optional.
-        prepareStep: ({ stepNumber }) =>
-          stepNumber === 0
-            ? { toolChoice: { type: "tool", toolName: "registrar_decisao" } }
-            : { toolChoice: "auto" },
+        // One automatic retry is enough for a network blip. More would only burn
+        // quota on rate-limit errors (each retry counts) and delay the friendly error.
+        modelSettings: {
+          temperature: 0.2,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          maxRetries: this.options.maxRetries ?? 1,
+        },
+        // Transparency is not optional, but it must not cost an extra model call:
+        // step 0 must call tools, and the prompt asks for the decision report in
+        // parallel with the first real tool. If the model skips it, the very next
+        // step is forced to report it, so every answer still has a decision.
+        prepareStep: ({ stepNumber }) => {
+          if (recorder.decision) return { toolChoice: "auto" };
+          return stepNumber === 0
+            ? { toolChoice: "required" }
+            : { toolChoice: { type: "tool", toolName: "registrar_decisao" } };
+        },
         ...(signal ? { abortSignal: signal } : {}),
       });
 
@@ -154,15 +187,14 @@ export class MastraAgentAdapter implements AgentPort {
             usage = readTokens(chunk.payload.output.usage);
             break;
           case "error":
-            throw new AgentUnavailableError(String(chunk.payload.error));
+            throw toAgentError(chunk.payload.error);
           default:
             break;
         }
         for (const action of recorder.takeNewActions()) yield { type: "step", action };
       }
     } catch (error) {
-      if (error instanceof AgentUnavailableError) throw error;
-      throw new AgentUnavailableError(error instanceof Error ? error.message : String(error));
+      throw toAgentError(error);
     }
 
     for (const action of recorder.takeNewActions()) yield { type: "step", action };

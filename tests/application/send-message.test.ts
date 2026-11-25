@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTrace } from "@/domain/agent/trace";
 import { startConversation, type Conversation } from "@/domain/conversation/conversation";
+import { AgentQuotaExceededError } from "@/application/errors";
 import type { AgentEvent, AgentPort, AgentTurn } from "@/application/ports/agent";
+import { RequestHumanHelp } from "@/application/use-cases/request-human-help";
 import { SendEmployeeMessage, type ChatEvent } from "@/application/use-cases/send-employee-message";
 import { InMemoryUsage, ana, carla } from "../support/in-memory";
 import { buildHarness } from "../support/harness";
@@ -25,10 +27,11 @@ class ScriptedAgent implements AgentPort {
   turns: AgentTurn[] = [];
   constructor(
     private readonly confidence = 0.9,
-    private readonly fail = false,
+    private readonly fail: boolean | "quota" = false,
   ) {}
   async *respond(turn: AgentTurn): AsyncGenerator<AgentEvent> {
     this.turns.push(turn);
+    if (this.fail === "quota") throw new AgentQuotaExceededError();
     if (this.fail) throw new Error("llm down");
     yield { type: "text_delta", text: "Olá" };
     yield { type: "done", text: "Olá, Ana!", blocks: [], trace: traceWith(this.confidence) };
@@ -48,6 +51,7 @@ function buildHarnessSend(h: Awaited<ReturnType<typeof setup>>, agent: ScriptedA
     messageLimit: 30,
     usage: new InMemoryUsage(h.messages),
     dailyLimit: 150,
+    allowedModels: [],
   });
 }
 
@@ -189,6 +193,40 @@ describe("SendEmployeeMessage", () => {
     expect(h.messages.rows.map((m) => m.role)).toEqual(["employee"]);
   });
 
+  it("passes the chosen model to the agent, and only if the server allows it", async () => {
+    const agent = new ScriptedAgent();
+    const h = await setup(agent);
+    const ok = await h.send!.begin(ana, "c1", "Oi", "model-b");
+    if (!ok.ok) throw ok.error;
+    await collect(ok.value.run());
+    expect(agent.turns[0]?.model).toBe("model-b");
+
+    const denied = await h.send!.begin(ana, "c1", "Oi de novo", "modelo-que-nao-existe");
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.error.code).toBe("INVALID_MESSAGE");
+    expect(h.messages.rows.filter((m) => m.role === "employee")).toHaveLength(1);
+  });
+
+  it("uses the default model when none is picked", async () => {
+    const agent = new ScriptedAgent();
+    const h = await setup(agent);
+    const begun = await h.send!.begin(ana, "c1", "Oi");
+    if (!begun.ok) throw begun.error;
+    await collect(begun.value.run());
+    expect(agent.turns[0]?.model).toBeUndefined();
+  });
+
+  it("explains a quota failure clearly and keeps the message", async () => {
+    const h = await setup(new ScriptedAgent(0.9, "quota"));
+    const begun = await h.send!.begin(ana, "c1", "Oi");
+    if (!begun.ok) throw begun.error;
+    const events = await collect(begun.value.run());
+
+    expect(events[0]).toMatchObject({ type: "error", code: "AGENT_QUOTA_EXCEEDED" });
+    expect(events[0]).toMatchObject({ message: expect.stringContaining("limite de uso") });
+    expect(h.messages.rows.map((m) => m.role)).toEqual(["employee"]);
+  });
+
   it("only sends the most recent messages to the model (cost control)", async () => {
     const agent = new ScriptedAgent();
     const h = await setup(agent);
@@ -250,5 +288,41 @@ describe("SendEmployeeMessage", () => {
       });
       expect((await h.send!.beginRetry(ana, "c1")).ok).toBe(false);
     });
+  });
+});
+
+describe("RequestHumanHelp", () => {
+  it("transfers without the model, quoting what the employee said", async () => {
+    const h = await setup(new ScriptedAgent(0.9, "quota"));
+    for (const text of ["Meu VPN caiu", "Preciso para a reunião"]) {
+      await h.messages.append({
+        id: text,
+        conversationId: "c1",
+        role: "employee",
+        authorId: ana.id,
+        content: text,
+        blocks: [],
+        createdAt: h.clock.now(),
+      });
+    }
+    const result = await new RequestHumanHelp(h.conversations, h.messages, h.handoff).execute(
+      ana,
+      "c1",
+    );
+
+    expect(result.ok).toBe(true);
+    const stored = await h.conversations.findById("c1");
+    expect(stored?.status).toBe("awaiting_analyst");
+    expect(stored?.handoff?.reason).toBe("user_request");
+    expect(stored?.handoff?.summary).toContain("Meu VPN caiu");
+    expect(stored?.handoff?.summary).toContain("indisponível");
+  });
+
+  it("cannot transfer twice and is closed to other employees", async () => {
+    const h = await setup(new ScriptedAgent());
+    const useCase = new RequestHumanHelp(h.conversations, h.messages, h.handoff);
+    expect((await useCase.execute(ana, "c1")).ok).toBe(true);
+    expect((await useCase.execute(ana, "c1")).ok).toBe(false);
+    await expect(useCase.execute(carla, "c1")).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

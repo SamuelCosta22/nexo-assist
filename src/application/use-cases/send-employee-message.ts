@@ -20,7 +20,7 @@ import type {
   PendingActionRepository,
   UsageRepository,
 } from "../ports/repositories";
-import { DailyLimitReachedError } from "../errors";
+import { AgentQuotaExceededError, DailyLimitReachedError } from "../errors";
 import { assertIsEmployee } from "../support/access";
 import { loadAuthorizedConversation } from "../support/conversation-guard";
 import { deterministicTrace } from "../support/deterministic-trace";
@@ -67,6 +67,8 @@ export interface SendEmployeeMessageDependencies {
   readonly usage: UsageRepository;
   /** Messages per employee in a rolling 24h window (protects model cost). */
   readonly dailyLimit: number;
+  /** Models an employee may pick for a turn. Never trust a model name coming from the browser. */
+  readonly allowedModels: readonly string[];
 }
 
 /**
@@ -84,10 +86,13 @@ export class SendEmployeeMessage {
     actor: User,
     conversationId: string,
     rawContent: string,
+    model?: string,
   ): Promise<
     Result<MessageTurn, MessageLimitReachedError | DailyLimitReachedError | InvalidMessageError>
   > {
     assertIsEmployee(actor);
+    const modelProblem = this.checkModel(model);
+    if (modelProblem) return err(modelProblem);
     const content = rawContent.trim();
     if (content.length === 0) return err(new InvalidMessageError("A mensagem está vazia."));
     if (content.length > MAX_MESSAGE_LENGTH) {
@@ -118,7 +123,7 @@ export class SendEmployeeMessage {
     return ok({
       userMessage,
       conversation: registered.value,
-      run: (signal) => this.run(actor, registered.value, signal),
+      run: (signal) => this.run(actor, registered.value, model, signal),
     });
   }
 
@@ -130,8 +135,11 @@ export class SendEmployeeMessage {
   async beginRetry(
     actor: User,
     conversationId: string,
+    model?: string,
   ): Promise<Result<MessageTurn, InvalidMessageError>> {
     assertIsEmployee(actor);
+    const modelProblem = this.checkModel(model);
+    if (modelProblem) return err(modelProblem);
     const { conversations, messages } = this.deps;
     const conversation = await loadAuthorizedConversation(conversations, actor, conversationId);
     const [last] = await messages.listRecent(conversation.id, 1);
@@ -141,13 +149,19 @@ export class SendEmployeeMessage {
     return ok({
       userMessage: last,
       conversation,
-      run: (signal) => this.run(actor, conversation, signal),
+      run: (signal) => this.run(actor, conversation, model, signal),
     });
+  }
+
+  private checkModel(model: string | undefined): InvalidMessageError | undefined {
+    if (model === undefined || this.deps.allowedModels.includes(model)) return undefined;
+    return new InvalidMessageError("Modelo não permitido.");
   }
 
   private async *run(
     employee: User,
     conversation: Conversation,
+    model: string | undefined,
     signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
     const { agent, messages, pendingActions, conversations, clock, ids } = this.deps;
@@ -171,6 +185,7 @@ export class SendEmployeeMessage {
           history,
           ...(pendingAction ? { pendingAction } : {}),
           now: clock.now(),
+          ...(model ? { model } : {}),
           toolbox: this.deps.toolboxFor(employee, conversation.id),
         },
         signal,
@@ -180,12 +195,22 @@ export class SendEmployeeMessage {
         else yield event;
       }
     } catch (error) {
-      console.error("[agent] turn failed", error);
+      if (error instanceof AgentQuotaExceededError) {
+        console.warn("[agent] model quota exhausted: the turn was not answered");
+        yield {
+          type: "error",
+          code: error.code,
+          message:
+            "O assistente atingiu o limite de uso do modelo por agora. Sua mensagem foi salva: tente de novo mais tarde ou fale com um analista.",
+        };
+        return;
+      }
+      console.error("[agent] turn failed:", error instanceof Error ? error.message : error);
       yield {
         type: "error",
         code: "AGENT_UNAVAILABLE",
         message:
-          "O assistente está indisponível agora. Sua mensagem foi salva: tente novamente em instantes ou peça para falar com um analista.",
+          "O assistente está indisponível agora. Sua mensagem foi salva: tente novamente em instantes ou fale com um analista.",
       };
       return;
     }

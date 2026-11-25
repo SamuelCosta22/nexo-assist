@@ -30,4 +30,18 @@ describe("parseEnv", () => {
   it("rejects an out-of-range failure rate", () => {
     expect(() => parseEnv({ ...valid, TICKETING_FAILURE_RATE: "2" })).toThrow();
   });
+
+  it("offers the default model first, trimmed and without duplicates", () => {
+    const env = parseEnv({
+      ...valid,
+      LLM_MODEL: "gemini-3.5-flash",
+      LLM_MODEL_OPTIONS: " gemini-2.5-flash , gemini-3.5-flash,, x ",
+    });
+    expect(env.LLM_MODEL_OPTIONS).toEqual(["gemini-3.5-flash", "gemini-2.5-flash", "x"]);
+  });
+
+  it("always includes the default model even if the list omits it", () => {
+    const env = parseEnv({ ...valid, LLM_MODEL: "meu-modelo", LLM_MODEL_OPTIONS: "a,b" });
+    expect(env.LLM_MODEL_OPTIONS).toEqual(["meu-modelo", "a", "b"]);
+  });
 });

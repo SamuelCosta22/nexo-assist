@@ -19,6 +19,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   INVALID_EDIT: 422,
   TICKETING_UNAVAILABLE: 503,
   AGENT_UNAVAILABLE: 503,
+  AGENT_QUOTA_EXCEEDED: 503,
 };
 
 export function errorResponse(error: unknown): Response {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Cpu } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 
 interface Props {
@@ -10,9 +10,25 @@ interface Props {
   /** "18/30 mensagens nesta sessão" */
   counter?: string | undefined;
   limitReached?: boolean | undefined;
+  /** Optional model picker shown next to the input (for trying other LLMs). */
+  modelPicker?:
+    | {
+        value: string;
+        options: readonly string[];
+        defaultModel: string;
+        onChange: (model: string) => void;
+      }
+    | undefined;
 }
 
-export function Composer({ disabled, placeholder, onSend, counter, limitReached }: Props) {
+export function Composer({
+  disabled,
+  placeholder,
+  onSend,
+  counter,
+  limitReached,
+  modelPicker,
+}: Props) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -38,6 +54,31 @@ export function Composer({ disabled, placeholder, onSend, counter, limitReached 
           limitReached ? "border-rule opacity-60" : "border-rule"
         }`}
       >
+        {modelPicker && (
+          // Icon-only: the native <select> stays (accessible, keyboard and mobile friendly)
+          // but is invisible and stretched over the icon, so a click opens the model list.
+          <label
+            title={`Modelo de IA: ${modelPicker.value}`}
+            className="relative flex size-9 shrink-0 cursor-pointer items-center justify-center self-center rounded-lg border border-rule bg-desk text-ink-2 transition focus-within:border-cta focus-within:ring-2 focus-within:ring-cta/15 hover:border-cta hover:text-cta has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+          >
+            <Cpu className="size-4" aria-hidden="true" />
+            <span className="sr-only">Modelo de IA</span>
+            <select
+              value={modelPicker.value}
+              disabled={disabled}
+              onChange={(event) => modelPicker.onChange(event.target.value)}
+              aria-label={`Modelo de IA (atual: ${modelPicker.value})`}
+              className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+            >
+              {modelPicker.options.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                  {name === modelPicker.defaultModel ? " (padrão)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <textarea
           ref={ref}
           value={value}

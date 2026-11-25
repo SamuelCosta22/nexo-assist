@@ -29,6 +29,7 @@ import {
   EditPendingAction,
   type PendingActionDependencies,
 } from "@/application/use-cases/pending-actions";
+import { RequestHumanHelp } from "@/application/use-cases/request-human-help";
 import { SendEmployeeMessage } from "@/application/use-cases/send-employee-message";
 import { MastraAgentAdapter } from "./agent/mastra-agent";
 import { getEnv } from "./config/env";
@@ -90,6 +91,7 @@ function build() {
   const agent = new MastraAgentAdapter({
     model: `google/${env.LLM_MODEL}`,
     modelName: env.LLM_MODEL,
+    forModel: (name) => `google/${name}`,
     ids,
   });
 
@@ -124,7 +126,9 @@ function build() {
       messageLimit: env.CHAT_MESSAGE_LIMIT,
       usage: new DrizzleUsageRepository(db),
       dailyLimit: env.DAILY_MESSAGE_LIMIT,
+      allowedModels: env.LLM_MODEL_OPTIONS,
     }),
+    requestHumanHelp: new RequestHumanHelp(conversations, messages, handoff),
     confirmPendingAction: new ConfirmPendingAction(pendingDeps),
     cancelPendingAction: new CancelPendingAction(pendingDeps),
     editPendingAction: new EditPendingAction(pendingDeps),

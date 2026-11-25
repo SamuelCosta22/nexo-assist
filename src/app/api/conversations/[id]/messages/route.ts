@@ -9,10 +9,11 @@ import { errorResponse, respond } from "../../../../_server/http";
 // The agent can take a while (several model calls); allow it on serverless hosts.
 export const maxDuration = 60;
 
+const model = z.string().max(80).optional();
 const body = z.union([
-  z.object({ content: z.string() }),
+  z.object({ content: z.string(), model }),
   /** Re-run the agent for the last message after a failure. */
-  z.object({ retry: z.literal(true) }),
+  z.object({ retry: z.literal(true), model }),
 ]);
 
 const encoder = new TextEncoder();
@@ -45,8 +46,8 @@ export function POST(request: Request, context: RouteContext<"/api/conversations
     const { sendEmployeeMessage } = getContainer();
     const begun =
       "retry" in input
-        ? await sendEmployeeMessage.beginRetry(user, id)
-        : await sendEmployeeMessage.begin(user, id, input.content);
+        ? await sendEmployeeMessage.beginRetry(user, id, input.model)
+        : await sendEmployeeMessage.begin(user, id, input.content, input.model);
     if (!begun.ok) return errorResponse(begun.error);
     const turn = begun.value;
 

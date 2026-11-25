@@ -83,6 +83,7 @@ export function buildHarness(
         messageLimit: 30,
         usage: new InMemoryUsage(messages),
         dailyLimit: options.dailyLimit ?? 150,
+        allowedModels: ["model-a", "model-b"],
       })
     : undefined;
 
