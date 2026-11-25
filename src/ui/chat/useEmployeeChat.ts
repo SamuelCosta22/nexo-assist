@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type {
   ChatStreamEvent,
@@ -11,6 +10,7 @@ import type {
   UserDto,
 } from "../api-types";
 import { api, ApiError, toApiError } from "../lib/api";
+import { notifyConversationsChanged } from "../lib/events";
 import { readEventStream } from "../lib/sse";
 import type { DraftEditsInput } from "./PendingActionCard";
 
@@ -34,7 +34,6 @@ const AGENT_ERRORS = new Set(["AGENT_UNAVAILABLE", "AGENT_NO_RESPONSE"]);
  * polling while a human is involved.
  */
 export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
-  const router = useRouter();
   const [view, setView] = useState<ConversationViewDto | null>(initial ?? null);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
   const [error, setError] = useState<ChatError | undefined>();
@@ -151,14 +150,14 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
           throw cause;
         }
         await refresh(conversationId);
-        router.refresh();
+        notifyConversationsChanged();
       } catch (cause) {
         fail(cause);
       } finally {
         setStreaming(null);
       }
     },
-    [append, createConversation, fail, refresh, router, stream, streaming, user, view],
+    [append, createConversation, fail, refresh, stream, streaming, user, view],
   );
 
   const retry = useCallback(async () => {
@@ -169,18 +168,18 @@ export function useEmployeeChat(user: UserDto, initial?: ConversationViewDto) {
     try {
       await stream(conversationId, { retry: true }, undefined);
       await refresh(conversationId);
-      router.refresh();
+      notifyConversationsChanged();
     } catch (cause) {
       fail(cause);
     } finally {
       setStreaming(null);
     }
-  }, [fail, refresh, router, stream, streaming, view]);
+  }, [fail, refresh, stream, streaming, view]);
 
   const afterAction = useCallback(async () => {
     if (view) await refresh(view.conversation.id);
-    router.refresh();
-  }, [refresh, router, view]);
+    notifyConversationsChanged();
+  }, [refresh, view]);
 
   const confirm = useCallback(
     async (actionId: string) => {

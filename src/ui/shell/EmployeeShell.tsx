@@ -3,11 +3,12 @@
 import { LogOut, MessageSquare, MessageSquarePlus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ConversationListItemDto, UserDto } from "../api-types";
 import { Avatar } from "../components/Avatar";
 import { NexoMark } from "../components/NexoMark";
 import { api } from "../lib/api";
+import { onConversationsChanged } from "../lib/events";
 import { formatListTime } from "../lib/format";
 
 const STATUS_DOT: Record<string, string> = {
@@ -45,7 +46,7 @@ function NavLink({
 
 export function EmployeeShell({
   user,
-  conversations,
+  conversations: initialConversations,
   children,
 }: {
   user: UserDto;
@@ -54,8 +55,29 @@ export function EmployeeShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [conversations, setConversations] = useState(initialConversations);
   const onChat = pathname.startsWith("/atendimento");
   const onProfile = pathname.startsWith("/perfil");
+
+  // Fresh list after every chat action, and now and then for changes made by an analyst.
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { items } = await api<{ items: ConversationListItemDto[] }>("/api/conversations");
+        setConversations(items);
+      } catch {
+        // Keep showing the last known list.
+      }
+    };
+    const stop = onConversationsChanged(() => void load());
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 15000);
+    return () => {
+      stop();
+      clearInterval(timer);
+    };
+  }, []);
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
