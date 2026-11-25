@@ -1,6 +1,7 @@
 "use client";
 
-import { Hand, Headset, MoreVertical, PanelRight, Undo2 } from "lucide-react";
+import { ArrowLeft, Hand, Headset, MoreVertical, PanelRight, Undo2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { AgentTrace, ConversationViewDto, MessageDto, UserDto } from "../api-types";
 import { AgentBlocks, type ChatActions } from "../chat/MessageItem";
@@ -144,6 +145,13 @@ export function ConsoleConversation({
     <div className="flex min-w-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col bg-desk">
         <header className="flex items-center gap-3 border-b border-rule bg-paper px-5 py-3">
+          <Link
+            href="/console"
+            aria-label="Voltar para a lista"
+            className="-ml-2 rounded-md p-2 text-ink-2 hover:bg-desk md:hidden"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
           <Avatar name={employee.name} size={36} online />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-sm font-semibold text-ink">{employee.name}</h2>

@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, MessageSquare } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import type { ConsoleListDto, UserDto } from "../api-types";
 import { Avatar } from "../components/Avatar";
@@ -19,6 +19,8 @@ export function ConsoleShell({
   children: ReactNode;
 }) {
   const router = useRouter();
+  // On phones the list and the conversation take turns (master/detail).
+  const detailOpen = /^\/console\/.+/.test(usePathname());
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
@@ -60,8 +62,8 @@ export function ConsoleShell({
           <Avatar name={analyst.name} size={34} online />
         </div>
       </nav>
-      <ConversationList analyst={analyst} initial={initialList} />
-      <div className="hidden min-w-0 flex-1 md:flex">{children}</div>
+      <ConversationList analyst={analyst} initial={initialList} hiddenOnMobile={detailOpen} />
+      <div className={`${detailOpen ? "flex" : "hidden"} min-w-0 flex-1 md:flex`}>{children}</div>
     </div>
   );
 }

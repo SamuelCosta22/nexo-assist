@@ -164,7 +164,35 @@ export function EmployeeShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-rule px-4 sm:px-8">
-          <nav aria-label="Você está em" className="flex items-center gap-2 text-[13px] text-ink-3">
+          <div className="flex items-center gap-1 md:hidden">
+            <NexoMark size={20} className="mr-2 text-cta" />
+            <Link
+              href="/atendimento"
+              aria-label="Nova conversa"
+              className="rounded-md p-2 text-ink-2 hover:bg-desk"
+            >
+              <MessageSquarePlus className="size-4" />
+            </Link>
+            <Link
+              href="/perfil"
+              aria-label="Meu perfil"
+              className="rounded-md p-2 text-ink-2 hover:bg-desk"
+            >
+              <User className="size-4" />
+            </Link>
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="Sair"
+              className="rounded-md p-2 text-ink-2 hover:bg-desk"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </div>
+          <nav
+            aria-label="Você está em"
+            className="hidden items-center gap-2 text-[13px] text-ink-3 md:flex"
+          >
             <span>Service desk de TI</span>
             <span aria-hidden="true">›</span>
             <span className="font-medium text-ink">{onProfile ? "Meu perfil" : "Atendimento"}</span>

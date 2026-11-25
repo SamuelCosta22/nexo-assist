@@ -77,9 +77,12 @@ function Preview({ item }: { item: ConversationListItemDto }) {
 export function ConversationList({
   analyst,
   initial,
+  hiddenOnMobile,
 }: {
   analyst: UserDto;
   initial: ConsoleListDto;
+  /** On phones the list yields the screen to the open conversation. */
+  hiddenOnMobile: boolean;
 }) {
   const pathname = usePathname();
   const [filter, setFilter] = useState<ConsoleFilterDto>("for_you");
@@ -118,7 +121,7 @@ export function ConversationList({
   return (
     <section
       aria-label="Conversas"
-      className="flex w-full shrink-0 flex-col border-r border-rule bg-paper md:w-[340px]"
+      className={`${hiddenOnMobile ? "hidden" : "flex"} w-full shrink-0 flex-col border-r border-rule bg-paper md:flex md:w-[340px]`}
     >
       <header className="flex items-center justify-between px-5 pb-3 pt-5">
         <h1 className="text-lg font-semibold text-ink">Conversas</h1>
