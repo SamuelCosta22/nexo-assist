@@ -1,141 +1,314 @@
 # Nexo Assist
 
-Agent de atendimento do service desk de TI da Nexo. O funcionário descreve o problema com as próprias palavras; o agent consulta os chamados dele, busca na central de ajuda, abre/atualiza chamados (sempre com confirmação) e chama um analista quando precisa. Um console separado permite ao analista assumir a conversa.
+Agent de atendimento do service desk de TI da Nexo. O funcionário descreve o problema com as próprias palavras; o agent consulta os chamados dele, busca na central de ajuda, abre ou atualiza chamados (sempre com confirmação) e chama um analista quando precisa. Um console separado permite ao analista assumir a conversa, e **cada resposta do agent é explicável**: o que entendeu, o que fez e por quê.
 
-> **Status:** setup inicial concluído (Fase 0). Os itens marcados com ⏳ neste README são preenchidos conforme as fases avançam. Ver [Roadmap](#roadmap).
+> **Status:** todas as funcionalidades do PRD estão implementadas. Falta apenas o **deploy** (ver [Deploy](#deploy)).
+
+---
+
+## Sumário
+
+1. [Como rodar](#como-rodar)
+2. [Histórias do PRD → onde estão atendidas](#histórias-do-prd--onde-estão-atendidas)
+3. [Arquitetura](#arquitetura)
+4. [Como o agent decide o que fazer](#como-o-agent-decide-o-que-fazer)
+5. [Transparência: como entender cada resposta](#transparência-como-entender-cada-resposta)
+6. [Como garanti a qualidade das decisões](#como-garanti-a-qualidade-das-decisões)
+7. [Escolha do modelo, eficiência e custo](#escolha-do-modelo-eficiência-e-custo)
+8. [Segurança e privacidade](#segurança-e-privacidade)
+9. [Decisões de arquitetura](#decisões-de-arquitetura)
+10. [Principais trade-offs e o que faria com mais tempo](#principais-trade-offs-e-o-que-faria-com-mais-tempo)
+11. [Deploy](#deploy)
 
 ---
 
 ## Como rodar
 
-Pré-requisitos: Node.js >= 20.19 (testado com 22), npm, um banco Postgres no [Neon](https://neon.tech) (plano gratuito) e uma chave do [Google AI Studio](https://aistudio.google.com) (camada gratuita).
+Pré-requisitos: Node.js >= 20.19 (testado com 22), npm, Docker (para o Postgres local) e uma chave gratuita do [Google AI Studio](https://aistudio.google.com).
 
 ```bash
 npm install
-cp .env.example .env.local     # preencha DATABASE_URL, GOOGLE_GENERATIVE_AI_API_KEY, SESSION_SECRET
-npm run db:migrate             # ⏳ Fase 1: cria o schema
-npm run db:seed                # ⏳ Fase 1: funcionários, analistas, artigos e chamados de exemplo
-npm run dev                    # http://localhost:3000
+cp .env.example .env.local        # preencha GOOGLE_GENERATIVE_AI_API_KEY e SESSION_SECRET
+docker compose up -d              # Postgres local na porta 54329
+npm run db:migrate                # cria as tabelas
+npm run db:seed                   # funcionários, analistas, artigos e chamados de exemplo
+npm run dev                       # http://localhost:3000
 ```
 
-| Script                                       | O que faz                                                       |
-| -------------------------------------------- | --------------------------------------------------------------- |
-| `npm run dev` / `build` / `start`            | Next.js                                                         |
-| `npm run check`                              | typecheck + lint + testes (o que roda antes de qualquer commit) |
-| `npm test` / `test:watch` / `test:coverage`  | Vitest                                                          |
-| `npm run typecheck`                          | `tsc --noEmit` em modo estrito                                  |
-| `npm run lint`                               | ESLint, **incluindo as regras de dependência entre camadas**    |
-| `npm run db:generate` / `migrate` / `studio` | Drizzle Kit                                                     |
-| `npm run db:seed`                            | Popula os dados de exemplo (idempotente)                        |
+`SESSION_SECRET` pode ser gerado com `openssl rand -base64 32`. O `DATABASE_URL` do `.env.example` já aponta para o Postgres do `docker-compose.yml`. Sem Docker, crie um projeto gratuito no [Neon](https://neon.tech) e cole a connection string: o código escolhe o driver pela URL.
+
+**Contas de demonstração** (qualquer senha serve): `ana.souza@nexo.com.br` (funcionária) e `rafael.lima@nexo.com.br` (analista N2). A tela de login tem atalhos para as duas. Outros funcionários: `carla.mendes`, `bruno.tavares`, `diego.ramos`, `elisa.prado`, `fabio.nunes`, `gabriela.rocha` (todos `@nexo.com.br`); outra analista: `bia.campos` (N1).
+
+**Dica para testar o console:** abra duas janelas (uma anônima), uma como Ana e outra como Rafael. Peça "quero falar com um analista" na conversa da Ana e acompanhe a transferência chegando ao console.
+
+| Script                                                         | O que faz                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `npm run dev` / `build` / `start`                              | Next.js                                                                               |
+| `npm run check`                                                | typecheck + lint (inclui regras de camadas) + testes: o que roda antes de cada commit |
+| `npm test` / `test:watch` / `test:coverage`                    | Vitest                                                                                |
+| `npm run eval`                                                 | 11 cenários do PRD contra o **modelo real** (precisa da chave)                        |
+| `npm run db:migrate` / `db:seed` / `db:generate` / `db:studio` | Banco (Drizzle). O seed é idempotente e reancora as datas dos chamados em "agora"     |
+| `npm run format`                                               | Prettier                                                                              |
+
+Variáveis de ambiente (todas validadas com Zod na primeira leitura, com mensagem clara se faltar algo):
+
+| Variável                                    | Para quê                                                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                              | Postgres (Neon ou local)                                                                                                          |
+| `GOOGLE_GENERATIVE_AI_API_KEY`, `LLM_MODEL` | Modelo do agent (padrão `gemini-3.5-flash`)                                                                                       |
+| `SESSION_SECRET`                            | Assina o cookie de sessão (mínimo 32 caracteres)                                                                                  |
+| `TICKETING_FAILURE_RATE`                    | 0 a 1: chance de o serviço de chamados "legado" ficar indisponível numa chamada. Use `0.3` para ver o tratamento de falha ao vivo |
+| `CHAT_MESSAGE_LIMIT`                        | Mensagens do funcionário por conversa (padrão 30, regra do PRD)                                                                   |
+| `DAILY_MESSAGE_LIMIT`                       | Mensagens por funcionário em 24 h (padrão 150): proteção de custo                                                                 |
+
+---
+
+## Histórias do PRD → onde estão atendidas
+
+**Funcionário**
+
+| #   | História                                                                   | Como é atendida                                                                                                                                                             |
+| --- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Tirar uma dúvida sem abrir chamado                                         | Tool `buscar_central_de_ajuda` (ranking lexical sobre 11 artigos); o prompt manda responder só com base nos artigos e checar condições (ex.: "vale apenas para Windows 10") |
+| 2   | Saber como está um chamado, mesmo sem lembrar o número, e se está atrasado | `consultar_meus_chamados` com lista selecionável e `consultar_chamado` com o veredito de SLA calculado **no domínio** (cartão com "prazo vencido")                          |
+| 3   | Complementar um chamado aberto                                             | `montar_atualizacao_chamado` gera um rascunho de atualização; só o botão Confirmar aplica                                                                                   |
+| 4   | Abrir chamado só conversando, conferindo antes                             | `montar_rascunho_chamado` → cartão com Confirmar / Editar / Cancelar. O código garante que nada é criado sem confirmação                                                    |
+| 5   | Falar com um analista quando preferir ou for grave                         | `transferir_para_analista`; casos críticos e baixa confiança transferem automaticamente (em código)                                                                         |
+| 6   | Voltar outro dia e continuar                                               | Conversas e mensagens persistem no Postgres; vários chats por funcionário na barra lateral                                                                                  |
+
+**Analista** (console)
+
+| #   | História                                                                        | Como é atendida                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Receber chamados com tipo, categoria e prioridade corretos e descrição completa | Campos obrigatórios validados no domínio; prioridade derivada de impacto × urgência (matriz explícita); o resumo do caso acompanha a transferência |
+| 2   | Ver as conversas que precisam dele, inclusive quando o agent não teve segurança | Abas Todas / Para você / Com o agent / Minhas com contadores; "Agent pediu ajuda · confiança 41%"                                                  |
+| 3   | Assumir (agent pausado), devolver ao agent ou encerrar                          | Máquina de estados no domínio; só o analista dono da conversa responde, devolve ou encerra                                                         |
 
 ---
 
 ## Arquitetura
 
-Combinamos **DDD** (modelagem do domínio do service desk), **Arquitetura Hexagonal** (portas e adaptadores) e **Clean Architecture** (regra de dependência apontando para dentro). A regra é única:
+Combinamos **DDD** (modelagem do domínio do service desk), **Arquitetura Hexagonal** (portas e adaptadores) e **Clean Architecture** (regra de dependência apontando para dentro). A regra é única e **verificada pelo ESLint** (`no-restricted-imports` por camada), então uma violação quebra o `npm run check` em vez de depender de revisão:
 
 ```
    domain  ←  application  ←  infrastructure  ←  app (entrega Next.js) / ui
-  (regras)    (casos de uso     (adapters: banco,     (rotas, páginas,
-               e PORTAS)         LLM/Mastra, auth,     componentes React)
+  (regras)    (casos de uso     (adapters: Postgres,    (rotas HTTP, páginas,
+               e PORTAS)         Mastra/Gemini, sessão,   componentes React)
                                  serviço de chamados)
 ```
 
-- **`domain/`**: entidades, value objects, políticas (SLA, duplicidade, máquina de estados da conversa). TypeScript puro: sem framework, sem banco, sem LLM, sem `zod`.
-- **`application/`**: casos de uso (ex.: _ConfirmarRascunho_, _TransferirParaAnalista_) e as **portas** (interfaces) de que precisam: repositórios, gateway de chamados, central de ajuda, agent, relógio. Só conhece o `domain`.
-- **`infrastructure/`**: **adaptadores** que implementam as portas: Drizzle/Neon, serviço de chamados simulado, agent Mastra + Gemini, sessão. Conhece `domain` e `application`.
-- **`app/` e `ui/`**: entrega. Rotas/páginas Next.js e componentes React. `ui` fala com o backend por HTTP e nunca importa `infrastructure`.
+- **`domain/`** (~1,1 mil linhas): entidades, políticas e a máquina de estados. TypeScript puro, sem framework, banco, LLM nem `zod`.
+- **`application/`**: casos de uso e **portas** (interfaces). Só conhece o `domain`.
+- **`infrastructure/`**: **adaptadores** que implementam as portas, mais o _composition root_ (`container.ts`), o único lugar que conhece classes concretas.
+- **`app/` e `ui/`**: entrega. Rotas finas (validam com Zod, chamam um caso de uso, mapeiam erros para HTTP) e componentes que falam com o backend por HTTP.
 
-A regra **é verificada pelo ESLint** (`no-restricted-imports` por camada em `eslint.config.mjs`), então uma violação quebra o `npm run check` em vez de depender de revisão humana.
+### Contextos delimitados (DDD)
 
-### Bounded contexts (DDD)
+| Contexto       | Conteúdo                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ticketing`    | Chamado, tipos, categorias, prioridade (matriz impacto × urgência), SLA e calendário de dias úteis, política de duplicidade/reabertura, rascunho |
+| `conversation` | Conversa, mensagens e blocos de UI, ação pendente (rascunho aguardando confirmação), estados e transferência                                     |
+| `agent`        | O **trace**: entendimento, intenção, confiança, justificativa, regras e ações                                                                    |
+| `helpdesk`     | Artigos e ranking de busca                                                                                                                       |
+| `identity`     | Usuários, papéis e cobertura N1/N2                                                                                                               |
 
-| Contexto       | Responsabilidade                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| `identity`     | Usuários e papéis (`employee`, `analyst`)                                                        |
-| `ticketing`    | Chamados, tipos, categorias, prioridade, SLA, duplicidade, reabertura                            |
-| `helpdesk`     | Artigos da central de ajuda e busca                                                              |
-| `conversation` | Conversa, mensagens, estados (agent / aguardando / analista), transferência, limite de mensagens |
-| `agent`        | Decisão do agent e **trace** de transparência (ações, confiança, justificativa)                  |
+O **serviço de chamados é um sistema legado externo**: o domínio só o conhece pela porta `TicketingGateway`. A implementação simulada vive em `infrastructure/ticketing` (tabelas próprias) e é decorada por `Flaky` (indisponibilidade simulada) e `Retrying` (novas tentativas), em camadas, sem que o agent saiba.
 
-O serviço de chamados é tratado como **sistema legado externo**: o domínio o enxerga só pela porta `TicketingGateway`; o adaptador simulado pode falhar de propósito para exercitar o tratamento de erro.
+### Fluxo de uma mensagem
+
+```
+Browser ──POST /api/conversations/:id/messages──► route (Zod, sessão)
+   SendEmployeeMessage.begin   valida → limite de 30 msgs e 150/24h → grava a mensagem
+   ◄── 200 text/event-stream ──┐
+   SendEmployeeMessage.run     │ só chama o agent se a conversa estiver com o agent
+     MastraAgentAdapter        │ ► chips (step) e texto (text_delta) em tempo real
+       Agent + tools ──► AgentToolbox (application) ──► gateway / repositórios
+     persiste a resposta + trace; se confiança < 50%, transfere (em código)
+```
+
+Confirmar um rascunho **não passa pelo modelo**: é um `POST /api/pending-actions/:id/confirm` disparado pelo botão.
 
 ### Estrutura de pastas
 
 ```
 src/
-  domain/            núcleo puro (shared/, depois um diretório por contexto)
-  application/       ports/ e use-cases/
-  infrastructure/    config/, persistence/, ticketing/, agent/, auth/
-  app/               rotas e páginas Next.js (camada de entrega)
-  ui/                componentes React
-scripts/             seed e utilitários de CLI
-tests/               testes de integração/fluxo (unitários ficam ao lado do código)
+  domain/          shared/ ticketing/ conversation/ agent/ helpdesk/ identity/
+  application/     ports/ · use-cases/ · support/ (toolbox, handoff, acesso)
+  infrastructure/  agent/ (Mastra) · persistence/ (Drizzle, seed) · ticketing/ · auth/ · config/ · container.ts
+  app/             rotas e páginas Next.js · _server/ (auth, http, dto)
+  ui/              chat/ console/ trace/ shell/ login/ profile/ lib/
+scripts/           migrate, seed, eval-agent
+tests/             integração (in-memory e PGlite) e helpers
+drizzle/           migrações SQL versionadas
 ```
 
 ---
 
-## Decisões de arquitetura
+## Como o agent decide o que fazer
 
-Cada decisão relevante fica registrada aqui, com o motivo e o trade-off.
+**Princípio central: o modelo decide _o que fazer_; o código decide _se pode_.** Regras que não podem falhar (privacidade, confirmação, SLA, limites, silêncio durante transferência) estão no código e têm testes. O prompt as explica para o agent se comportar bem e se explicar, mas nunca é a única proteção.
 
-| #   | Decisão                                                                                                                                                                                   | Motivo                                                                                                                                                           | Trade-off / alternativa descartada                                                                                                                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Hexagonal + DDD + Clean Architecture**, com a regra de dependência verificada por lint                                                                                                  | O PRD avalia "separação entre interface, agent e serviços". Portas permitem trocar LLM, banco e serviço de chamados sem tocar nas regras                         | Mais arquivos/indireção que um CRUD direto; aceitável pelo ganho em testabilidade                                                                                                           |
-| 2   | **Regras do Anexo A no domínio (código determinístico), não no prompt**                                                                                                                   | Prazo de SLA, duplicidade, confirmação antes de criar e silêncio do agent em transferência precisam ser **garantidos**, não "pedidos" ao modelo                  | O LLM decide _o que fazer_; o código decide _se pode_. Exige mais ferramentas (tools) bem definidas                                                                                         |
-| 3   | **TypeScript `strict`** + `noUncheckedIndexedAccess`, `noImplicitOverride`, `noUnusedLocals/Parameters`, `verbatimModuleSyntax`; `any` proibido por lint                                  | Requisito do PRD ("tipagem estrita") levado além do mínimo                                                                                                       | Um pouco mais verboso em acessos a índices                                                                                                                                                  |
-| 4   | **Next.js 16 (App Router)**                                                                                                                                                               | Sugestão do PRD; frontend e API num só deploy na Vercel                                                                                                          | Backend não fica isolado em outro serviço                                                                                                                                                   |
-| 5   | **`cacheComponents` e `partialPrefetching` desativados** (vêm ligados no scaffold)                                                                                                        | Todas as telas são autenticadas e por usuário: não há nada seguro para cachear/prerender; ligá-los forçaria `Suspense` em todo acesso a cookie sem benefício     | Perde otimização que não se aplica a este produto                                                                                                                                           |
-| 6   | **`proxy.ts`** (substitui `middleware` nesta versão do Next) para proteger rotas                                                                                                          | Convenção atual do framework (docs em `node_modules/next/dist/docs`)                                                                                             | Proxy é só a 1ª barreira; **autorização real é refeita nos casos de uso**                                                                                                                   |
-| 7   | **Mastra** para o agent                                                                                                                                                                   | Preferência declarada no PRD; tools tipadas com Zod e workflows                                                                                                  | Framework jovem; isolado atrás da porta `Agent` para ser substituível                                                                                                                       |
-| 8   | **Google Gemini Flash** como modelo padrão (`LLM_MODEL`)                                                                                                                                  | Camada gratuita, bom _tool calling_, baixa latência e custo, o que atende "eficiência/custo por conversa". Trocável por variável de ambiente                     | Camada gratuita tem limite de requisições e pode usar dados para treinamento; aceitável porque **todos os dados são fictícios**. Em produção real usaríamos um plano pago com retenção zero |
-| 9   | **Postgres (Neon) + Drizzle ORM**                                                                                                                                                         | Permite deploy 100% na Vercel (SQLite exigiria disco persistente) e o mesmo banco em dev/prod. Drizzle: SQL tipado, leve, sem _engine_ nativa, boa em serverless | Dev local depende de rede (Neon); mitigação: branch de dev gratuito no Neon                                                                                                                 |
-| 10  | **Sessão por cookie `httpOnly` assinado (`jose`)**, usuários seed aceitam qualquer senha                                                                                                  | O PRD pede login só para dados de exemplo; cookie assinado evita estado no servidor e é seguro por padrão                                                        | Não é autenticação real; em produção seria SSO/OIDC. Documentado como limitação                                                                                                             |
-| 11  | **Isolamento entre funcionários na camada de dados**: o `userId` vem da sessão e é injetado nas _tools_ pelo servidor, **nunca** como parâmetro que o LLM possa escolher                  | Requisito de privacidade (Anexo A + "nunca expostos a outro"). Prompt injection não consegue pedir chamado alheio                                                | Tools não são "genéricas"; cada uma já nasce escopada ao usuário                                                                                                                            |
-| 12  | **`Result<T, E>` para falhas de negócio**, exceções só para falhas inesperadas; `DomainError` com `code` estável                                                                          | Falhas esperadas viram fluxo tipado; o `code` alimenta o trace do agent e o mapeamento HTTP                                                                      | Um pouco mais de cerimônia que `throw`                                                                                                                                                      |
-| 13  | **Variáveis de ambiente validadas com Zod**, com falha imediata e mensagem legível (`infrastructure/config/env.ts`)                                                                       | Evita segredo ausente virar erro obscuro; chaves nunca ficam no código                                                                                           | Parsing é _lazy_ para não exigir segredos no `next build`                                                                                                                                   |
-| 14  | **Contagem de 30 mensagens = mensagens do funcionário, por conversa**                                                                                                                     | O PRD diz "30 mensagens por sessão" sem definir; contar só as do usuário é o que controla o custo                                                                | Interpretação nossa; limite configurável (`CHAT_MESSAGE_LIMIT`)                                                                                                                             |
-| 15  | **Várias conversas por funcionário**, estilo ChatGPT/Claude                                                                                                                               | Decisão do produto (alinhada com o autor do desafio); suporta a história "voltar outro dia e continuar"                                                          | Exige lista de conversas no menu lateral (ajuste do protótipo, que mostra só uma)                                                                                                           |
-| 16  | **SLA: dias úteis = seg–sex, 8h–18h, sem feriados; Crítica = 1h corridas (plantão 24h)**                                                                                                  | Segue o Anexo A e o artigo de exemplo do horário do service desk                                                                                                 | Feriados ignorados (documentado). Calendário configurável seria a evolução                                                                                                                  |
-| 17  | **"Confiança" do agent = nota autoavaliada do modelo (0–1) combinada com regras; abaixo de 0,5 transfere**                                                                                | O PRD cita "confiança" nas telas mas não a define                                                                                                                | Autoavaliação de LLM é imperfeita; por isso as regras de negócio têm precedência e o valor é exibido no trace                                                                               |
-| 18  | **Tempo real: SSE no chat; polling curto no console do analista**                                                                                                                         | SSE basta (fluxo servidor→cliente) e é simples na Vercel; polling é robusto para a lista do console                                                              | Não é _push_ verdadeiro no console; WebSocket seria a evolução                                                                                                                              |
-| 19  | **Tokens de design extraídos do protótipo** (`nexo.pen`) para `globals.css`: fontes Schibsted Grotesk (UI), Newsreader (títulos), IBM Plex Mono (dados); paleta `ink`/`cta`/`rule`/`desk` | Fidelidade ao protótipo ("seguir layout e estilo")                                                                                                               | Três famílias de fonte aumentam o peso inicial; carregadas com `next/font` (self-hosted, sem layout shift)                                                                                  |
-| 20  | **Testes onde fazem diferença**: domínio (SLA, duplicidade, estados), casos de uso e isolamento de dados; pouco mock de UI                                                                | Pedido do PRD ("testes onde fazem diferença")                                                                                                                    | Sem testes E2E de navegador por ora                                                                                                                                                         |
+### O que é do modelo e o que é do código
 
-### Escolha do modelo ⏳
+| Decisão                                                                                       | Quem decide                                                                                        |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Entender a intenção; quais ferramentas usar; o que perguntar; redigir título e descrição      | **Modelo**                                                                                         |
+| Prioridade e prazo (impacto × urgência → matriz; SLA em horas úteis)                          | **Código**: o modelo só informa impacto e urgência, nunca escolhe a prioridade                     |
+| Criar, atualizar ou reabrir um chamado                                                        | **Código**, e só após o botão Confirmar: o modelo apenas monta o rascunho                          |
+| Chamado aberto sobre o mesmo problema vira atualização; resolvido há ≤ 7 dias vira reabertura | **Código** (a ferramenta de rascunho recusa duplicata; a confirmação tem uma 2ª rede de segurança) |
+| Isolamento entre funcionários                                                                 | **Código**: o `userId` vem da sessão e nunca é parâmetro das ferramentas                           |
+| O agent responde ou fica em silêncio                                                          | **Código**: se a conversa não está no estado `agent`, o modelo nem é chamado                       |
+| Transferir por pedido do funcionário                                                          | Modelo (ferramenta), com o funcionário pedindo                                                     |
+| Transferir em caso crítico ou baixa confiança                                                 | **Código** (ao confirmar um chamado Crítica; ao ver confiança < 50%)                               |
 
-Detalhada na Fase 3 (custo por conversa, latência e por que um modelo "flash" é suficiente quando as regras críticas estão no código).
+### Ciclo de cada mensagem
+
+1. **Passo 0 forçado:** o primeiro passo do loop é obrigatoriamente `registrar_decisao` (entendimento, intenção, confiança, justificativa, regras). É isso que alimenta a transparência; `toolChoice` força o modelo a registrar _antes_ de agir.
+2. O modelo usa as ferramentas necessárias (máximo de 8 passos).
+3. Responde em texto curto; cartões (chamado, rascunho, lista) são desenhados pela interface a partir de blocos estruturados, sem o modelo repetir o conteúdo.
+
+### Ferramentas
+
+`registrar_decisao` · `consultar_meus_chamados` · `consultar_chamado` · `buscar_central_de_ajuda` · `montar_rascunho_chamado` · `montar_atualizacao_chamado` · `perguntar_com_opcoes` · `transferir_para_analista` · `marcar_conversa_resolvida`.
+
+São envoltórios finos (Zod + delegação ao `AgentToolbox` da camada de aplicação). Falhas viram resultados tipados: se o serviço de chamados está fora do ar, a ferramenta devolve `SERVICO_DE_CHAMADOS_INDISPONIVEL`, o modelo é instruído a dizer isso com honestidade (sem inventar dados) e a falha aparece no trace.
+
+### Regras de transferência (Anexo A)
+
+| Gatilho             | Mecanismo                                                                                                                | Fila       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| Funcionário pede    | Ferramenta `transferir_para_analista`                                                                                    | Suporte N1 |
+| Caso crítico        | Automático ao confirmar um chamado com prioridade Crítica                                                                | Suporte N2 |
+| Chamado vencido     | O agent **oferece** ("Falar com um analista / Adicionar informação / Não, obrigado"); transfere se o funcionário aceitar | Suporte N2 |
+| Agent sem segurança | Automático quando a confiança autoavaliada é < 50%                                                                       | Suporte N1 |
+
+A transferência leva um **resumo do caso**, move o chamado para o grupo e pausa o agent. Um analista N2 atende filas N1 e N2; um N1 não atende N2.
 
 ---
 
-## ⏳ Como o agent decide o que fazer
+## Transparência: como entender cada resposta
 
-Preenchido na Fase 3. Resumo previsto: o agent recebe a mensagem, escolhe _tools_, produz um **trace estruturado** (entendimento, ações com entrada/saída/duração, regras aplicadas, confiança e justificativa) que é persistido e exibido na UI (chips resumidos + painel de detalhe) e no console do analista.
+(_"Esta é a parte mais importante do desafio."_) Cada mensagem do agent carrega um **trace** estruturado e persistido:
 
-## ⏳ Como garanti a qualidade das decisões
+- **Resumo (como no protótipo):** chips acima da resposta (`consultou seus chamados`, `classificou a prioridade`, `montou o rascunho`...), mais "ver detalhes".
+- **Painel de detalhe (lateral):** _O que entendeu_ e a intenção; _Confiança_ (medidor, com o limite de 50%); _Por que agiu assim_; _Regras aplicadas_; cada _ação_ expansível com **entrada, resultado, duração e erro**; _métricas_ (modelo, latência, tokens). Se o modelo pulou o registro da decisão, o painel avisa.
+- **Respostas feitas por código** (confirmar um rascunho, cancelar, transferência automática) também têm trace, marcadas como "regras determinísticas (sem LLM)": toda mensagem do agent é explicável.
+- **O analista vê o mesmo trace** no console ("ver decisão"), além do resumo do caso e da confiança que motivou a transferência.
 
-Preenchido nas Fases 3 e 7: regras no código, testes de domínio, cenários de avaliação do agent.
+O trace é montado por um único componente (`TurnRecorder`), que cronometra cada chamada de ferramenta, e é o que garante que "o que o painel mostra" é "o que realmente aconteceu".
 
-## ⏳ Principais trade-offs e o que faria com mais tempo
+---
 
-Consolidado na Fase 8.
+## Como garanti a qualidade das decisões
+
+**158 testes automatizados em 19 arquivos**, em quatro níveis:
+
+| Nível                                                                         | O que cobre                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Domínio** (puro, rápido)                                                    | Calendário de dias úteis (09:43 + 4 h úteis = 13:43, como no protótipo), SLA por prioridade, matriz de prioridade, duplicidade e janela de 7 dias, máquina de estados, rascunhos e edição, ranking da central de ajuda                                                                                                       |
+| **Aplicação** (adaptadores em memória)                                        | Privacidade (um chamado alheio é indistinguível de um inexistente), nenhum chamado sem confirmação, duplicata que escapa do modelo é capturada, auto-transferência crítica, retry após queda do serviço, escalada por baixa confiança, limites de 30 mensagens e 150/24 h, janela de histórico, concorrência entre analistas |
+| **Infraestrutura** (Postgres real em memória, PGlite, com as migrações reais) | Repositórios, códigos sequenciais atômicos, escrita obsoleta rejeitada, ordem das mensagens, JSON, seed e decoradores de resiliência                                                                                                                                                                                         |
+| **Agent** (loop Mastra real com modelo _mock_ roteirizado)                    | Passo 0 forçado, ferramentas ligadas, rascunho sem criar, privacidade, falha do serviço, trace completo e histórico → mensagens do modelo                                                                                                                                                                                    |
+
+Além disso: `tsc --noEmit` com flags estritas, ESLint com as regras de camada, e **`npm run eval`**: 11 cenários do PRD contra o **modelo real** (VPN 809 no Windows 11, status e chamado vencido, duplicidade, fora de escopo, privacidade, caso crítico, transferência, _prompt injection_). As checagens aceitam qualquer comportamento correto e rejeitam os nocivos, porque modelos são não determinísticos.
+
+> **Transparência sobre o que foi validado:** os testes automatizados e o fluxo ponta a ponta (login, chat, rascunho, confirmação, console) foram executados contra Postgres real e no navegador. O ciclo do agent foi validado com modelo _mock_; os cenários com o **modelo real** estão em `npm run eval` e dependem da chave de API.
+
+---
+
+## Escolha do modelo, eficiência e custo
+
+**Modelo:** Google Gemini Flash (`gemini-3.5-flash`, id do registro de modelos do Mastra instalado). Motivos: camada gratuita (qualquer pessoa roda o projeto sem pagar), bom _tool calling_ e baixa latência. Por design **um modelo pequeno basta**, porque as regras críticas estão no código e não dependem de raciocínio sofisticado. O modelo é trocável por `LLM_MODEL` (e, no Mastra, por qualquer provedor).
+
+Controles de custo e latência, todos no código:
+
+- **Histórico limitado a 20 mensagens** por chamada; blocos de UI viram uma linha de texto para o modelo.
+- **Máximo de 8 passos** por turno, `temperature` 0,2 e **900 tokens** de saída.
+- **Respostas por código sem LLM** (confirmar, cancelar, transferência automática): custo zero.
+- **Limites:** 30 mensagens por conversa e 150 por funcionário em 24 h; só mensagens que o agent responderia contam.
+- **Streaming** dos chips e do texto: a primeira resposta aparece antes do fim do turno.
+- O custo do **passo 0 forçado** (uma ida e volta extra, com entrada pequena) é o preço consciente da transparência; os tokens de cada turno aparecem no painel.
+
+Trade-off da camada gratuita: tem limite de requisições e, no plano gratuito, os dados podem ser usados para melhoria dos produtos. É aceitável porque **todos os dados são fictícios**; em produção real usaríamos um plano pago com retenção zero.
 
 ---
 
 ## Segurança e privacidade
 
-- Chaves apenas em variáveis de ambiente; `.env*` ignorado pelo git (só `.env.example` é versionado).
-- Chamados de um funcionário nunca são expostos a outro (ver decisão 11).
-- Mensagens de erro ao usuário não vazam detalhes internos.
+- **Chaves fora do código:** só em variáveis de ambiente; `.env*` ignorado pelo git (apenas `.env.example`); validação com Zod na inicialização.
+- **Isolamento entre funcionários é estrutural:** cada ferramenta do agent nasce ligada a um funcionário e a uma conversa; o modelo não tem como nomear outro usuário, nem por _prompt injection_. Chamado alheio e chamado inexistente devolvem exatamente a mesma resposta (sem oráculo de existência). A regra de acesso fica num único lugar (`assertCanViewTicket`).
+- **Confirmação só por botão:** o modelo não consegue "confirmar" nada por conta própria.
+- **Sessão:** cookie `httpOnly`, `SameSite=Lax`, `Secure` em produção, JWT assinado (HS256, com emissor verificado); só o id do usuário vai no token, e o **papel é relido do banco** a cada requisição. O `proxy.ts` é só a primeira barreira; a autorização real é refeita em cada rota e caso de uso.
+- **Erros:** mensagens inesperadas nunca vazam para o cliente (teste dedicado); detalhes ficam no log.
+- **Saída do modelo é dado:** renderizada como nós React (sem HTML injetável); o prompt manda ignorar instruções contidas em mensagens e artigos.
+- **Cabeçalhos de segurança** (`nosniff`, `X-Frame-Options: DENY`, referrer e permissions policy) e limites de uso (30/conversa, 150/24 h).
 
-## Roadmap
+---
 
-- [x] **Fase 0:** setup (Next 16, TS estrito, lint de camadas, Vitest, Drizzle config, tokens de design, README)
-- [ ] **Fase 1:** domínio + dados (schema, seed, serviço de chamados simulado, central de ajuda, SLA)
-- [ ] **Fase 2:** autenticação + layout (login, sidebar, perfil)
-- [ ] **Fase 3:** agent Mastra + tools + guardrails + streaming
-- [ ] **Fase 4:** UI do chat (chips, opções rápidas, seleção, rascunho, limite)
-- [ ] **Fase 5:** transferência + console do analista
-- [ ] **Fase 6:** transparência (trace persistido + painel de detalhe)
-- [ ] **Fase 7:** testes finais e revisão de segurança
-- [ ] **Fase 8:** README final + deploy (Vercel + Neon, com proteção de custo/abuso)
+## Decisões de arquitetura
+
+| #   | Decisão                                                                                                                     | Motivo                                                                                                                                   | Trade-off / alternativa descartada                                                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1   | **Hexagonal + DDD + Clean**, dependência verificada por lint                                                                | O PRD avalia "separação entre interface, agent e serviços". Portas permitem trocar LLM, banco e serviço de chamados sem tocar nas regras | Mais arquivos e indireção que um CRUD direto; compensa em testabilidade                       |
+| 2   | **Regras do Anexo A no domínio, não no prompt**                                                                             | SLA, duplicidade, confirmação e silêncio do agent precisam ser **garantidos**                                                            | O LLM decide _o quê_; o código decide _se pode_. Exige ferramentas bem definidas              |
+| 3   | **TypeScript `strict`** + `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`; `any` proibido por lint | "Tipagem estrita" levada além do mínimo                                                                                                  | Mais verboso em acessos por índice                                                            |
+| 4   | **Next.js 16 (App Router)**                                                                                                 | Sugestão do PRD; front e API num só deploy                                                                                               | Backend não fica isolado em outro serviço                                                     |
+| 5   | **`cacheComponents` desativado** (vem ligado no scaffold)                                                                   | Todas as telas são autenticadas e por usuário: nada seguro para cachear                                                                  | Abre mão de uma otimização que não se aplica                                                  |
+| 6   | **`proxy.ts`** (substitui `middleware` nesta versão) como 1ª barreira                                                       | Convenção atual do framework                                                                                                             | Autorização real refeita nas rotas                                                            |
+| 7   | **Mastra** para o agent, atrás da porta `AgentPort`                                                                         | Preferência declarada no PRD                                                                                                             | Framework jovem; isolado para ser substituível                                                |
+| 8   | **Gemini Flash** (`LLM_MODEL`)                                                                                              | Gratuito, bom em tools, baixo custo                                                                                                      | Limites da camada gratuita                                                                    |
+| 9   | **Postgres + Drizzle**; driver escolhido pela URL (Neon HTTP em produção, `pg` local)                                       | Deploy 100% na Vercel (SQLite exigiria disco persistente); mesmo código em dev e produção                                                | Sem transações multi-statement no driver HTTP; cada passo é independente e seguro             |
+| 10  | **Sessão por cookie assinado (`jose`)**, qualquer senha para usuários de exemplo                                            | O PRD pede login só para dados de exemplo                                                                                                | Não é autenticação real; em produção seria SSO/OIDC                                           |
+| 11  | **Isolamento por construção** (toolbox ligado ao funcionário)                                                               | Privacidade não pode depender do prompt                                                                                                  | Ferramentas não são genéricas                                                                 |
+| 12  | **`Result<T,E>` para falhas de negócio**, `DomainError` com `code` estável                                                  | Falhas esperadas viram fluxo tipado; o código alimenta o trace e o status HTTP                                                           | Mais cerimônia que `throw`                                                                    |
+| 13  | **Variáveis validadas com Zod** (falha rápida, mensagem legível), leitura _lazy_                                            | Segredo ausente não vira erro obscuro; o `build` não exige segredos                                                                      | —                                                                                             |
+| 14  | **Limite de 30 mensagens = mensagens do funcionário, por conversa**; só conta enquanto o agent responde                     | O PRD não define "sessão"; isso controla o custo sem bloquear a conversa com o analista                                                  | Interpretação nossa, configurável                                                             |
+| 15  | **Várias conversas por funcionário** (estilo ChatGPT)                                                                       | Decisão do produto; suporta "voltar outro dia"                                                                                           | Acrescenta uma lista de conversas ao menu do protótipo                                        |
+| 16  | **Dias úteis: seg–sex, 8h–18h, sem feriados; Crítica = 1 h corrida** (plantão 24 h). Fuso fixo UTC−3                        | Anexo A e Anexo B. O Brasil não tem horário de verão desde 2019, então o offset fixo é exato                                             | Feriados ignorados; um calendário configurável seria a evolução                               |
+| 17  | **Confiança = autoavaliação do modelo, com limite de 50% aplicado em código**                                               | O PRD cita "confiança" sem defini-la                                                                                                     | Autoavaliação é imperfeita; por isso as regras de negócio têm precedência e o valor é exibido |
+| 18  | **SSE no chat; polling curto no console**                                                                                   | SSE basta (servidor → cliente) e é simples na Vercel; polling é robusto para listas                                                      | Não é _push_ verdadeiro no console; WebSocket seria a evolução                                |
+| 19  | **Tokens de design extraídos do protótipo** (`nexo.pen`): Schibsted Grotesk, Newsreader, IBM Plex Mono                      | Fidelidade ao protótipo                                                                                                                  | Três famílias de fonte (carregadas com `next/font`, sem layout shift)                         |
+| 20  | **Testes onde fazem diferença**: domínio, casos de uso, repositórios em Postgres real, loop do agent                        | Pedido do PRD                                                                                                                            | Sem E2E de navegador automatizado                                                             |
+| 21  | **Fila da transferência por motivo:** crítico e vencido → N2; pedido e baixa confiança → N1; N2 atende N1, N1 não atende N2 | O protótipo mostra "Suporte N2" para chamado vencido                                                                                     | Roteamento simples; poderia ser configurável                                                  |
+| 22  | **"Redefinir senha" só registra o pedido** (sem e-mail real)                                                                | A tela existe no protótipo, não no PDF; enviar e-mail está fora do escopo                                                                | Funcionalidade demonstrativa                                                                  |
+| 23  | **Confirmação exclusivamente por botão** (ou ⌘/Ctrl+Enter)                                                                  | Um modelo não deve poder confirmar por texto ("sim, pode criar")                                                                         | Se o funcionário escreve "confirmo", o agent o orienta a clicar                               |
+| 24  | **Respostas determinísticas também têm trace**                                                                              | Toda mensagem do agent é explicável                                                                                                      | Registro mais verboso                                                                         |
+| 25  | **Concorrência otimista (compare-and-set)** em conversas                                                                    | Dois analistas não podem assumir a mesma conversa                                                                                        | O perdedor recebe 409 e recarrega                                                             |
+| 26  | **Rede de segurança contra duplicidade no código**, além da ferramenta                                                      | O modelo pode falhar em notar um chamado aberto                                                                                          | Uma heurística lexical; falso positivo vira atualização, nunca perda                          |
+| 27  | **Passo 0 forçado** (`registrar_decisao`)                                                                                   | Transparência não é opcional                                                                                                             | Uma chamada extra de modelo por turno                                                         |
+| 28  | **Teto de 150 mensagens por funcionário em 24 h**                                                                           | Proteção de custo e abuso num deploy público                                                                                             | Valor fixo configurável                                                                       |
+| 29  | **Serviço de chamados como módulo atrás de uma porta**, não como API HTTP separada                                          | Separação real (tabelas e código próprios, só a porta o enxerga), sem a latência e a complexidade de chamadas entre funções serverless   | Em produção seria um cliente HTTP; só um adaptador muda                                       |
+| 30  | **Relógio do SLA parte da última resposta de um analista** (ou da criação)                                                  | "O prazo vale para a primeira resposta e para cada atualização"; comentário do funcionário não para o relógio                            | Interpretação nossa do Anexo A                                                                |
+| 31  | **Sidebar atualizada por evento, não por `router.refresh()`**                                                               | O refresh remontava o chat e engolia o erro do agent (bug encontrado em teste visual)                                                    | Um barramento de eventos minúsculo                                                            |
+| 32  | **Rótulos neutros em pt-BR** ("Chamados de Bruno")                                                                          | Gênero nunca é inferido do nome; o protótipo usa "da Ana"                                                                                | Pequeno desvio do protótipo                                                                   |
+| 33  | **Retry do agent sem duplicar** a mensagem nem gastar o limite                                                              | Se o modelo falha, a mensagem já está salva                                                                                              | Caminho extra no caso de uso                                                                  |
+| 34  | **Mobile mínimo funcional** (barra no chat; mestre/detalhe no console)                                                      | O PRD pede desktop; o resto é cuidado                                                                                                    | Não é um design mobile completo                                                               |
+
+---
+
+## Principais trade-offs e o que faria com mais tempo
+
+**Trade-offs assumidos**
+
+- Autenticação simulada, feriados ignorados e "redefinir senha" demonstrativa (decisões 10, 16, 22).
+- Busca na central de ajuda **lexical**: ótima para um acervo de dezenas de artigos, insuficiente para milhares.
+- O console usa **polling** (2,5–3 s). Para dezenas de analistas, SSE/WebSocket com _pub-sub_.
+- A confiança é **autoavaliada** pelo modelo, não calibrada.
+- O serviço de chamados é um módulo, não uma API HTTP; sem chaves de idempotência (em um legado real, retries de escrita precisariam delas).
+
+**Com mais tempo**
+
+1. **Avaliação contínua do agent:** rodar `npm run eval` em CI agendado com um conjunto maior de cenários, `LLM-as-judge` para a qualidade do texto e métricas de custo por conversa.
+2. **Busca semântica** na central de ajuda (embeddings com pgvector, no próprio Postgres).
+3. **Observabilidade:** traces do Mastra exportados para OpenTelemetry, painel de custo e latência por turno.
+4. **E2E com Playwright** dos fluxos principais; teste de carga do SSE.
+5. **Calendário de feriados** configurável e SLA com pausa de relógio por "aguardando usuário".
+6. **Tempo real de verdade** no console e indicador de "digitando".
+7. **Autenticação corporativa (OIDC)**, trilha de auditoria de ações do analista e limitação de taxa por IP.
+8. **Resumo automático de conversas longas** em vez de truncar o histórico.
+
+---
+
+## Deploy
+
+⏳ Será preenchido ao final: plataforma, como foi publicado (Vercel + Neon), variáveis necessárias e como as chaves e o uso estão protegidos (limites por conversa e por 24 h, `maxDuration`, tetos de tokens, `.env` fora do repositório).
