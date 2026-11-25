@@ -112,6 +112,16 @@ describe("assume / hand back / close", () => {
     expect(h.messages.rows.at(-1)?.systemEvent).toBe("closed");
   });
 
+  it("lets a covering analyst decline a transfer before assuming it", async () => {
+    const { h, deps } = await setup();
+    const result = await new HandBackConversation(deps).execute(rafael, "c-ana");
+    expect(result.ok && result.value.status).toBe("agent");
+    expect((await h.conversations.findById("c-ana"))?.handoff).toBeUndefined();
+    // An N1 analyst cannot decline an N2 queue.
+    const { deps: other } = await setup();
+    expect((await new HandBackConversation(other).execute(bia, "c-ana")).ok).toBe(false);
+  });
+
   it("completes the assume even if the ticketing system is down", async () => {
     const { h, deps } = await setup();
     h.ticketing.down = true;

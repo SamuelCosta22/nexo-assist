@@ -5,6 +5,7 @@ import {
   assumeConversation,
   canAgentReply,
   closeConversation,
+  declineHandoff,
   handBackToAgent,
   markResolvedByAgent,
   registerEmployeeMessage,
@@ -137,6 +138,28 @@ describe("handoff flow", () => {
   it("only analysts can assume", () => {
     const employee: User = { id: "u1", name: "Ana", email: "a@nexo", role: "employee" };
     expect(assumeConversation(fresh(), employee, now).ok).toBe(false);
+  });
+});
+
+describe("declineHandoff", () => {
+  const waiting = () =>
+    unwrap(requestHandoff(fresh(), { reason: "user_request", summary: "x" }, now));
+
+  it("sends a transferred conversation back to the agent without assuming it", () => {
+    const back = unwrap(declineHandoff(waiting(), rafael, later));
+    expect(back.status).toBe("agent");
+    expect(back.handoff).toBeUndefined();
+    expect(back.assignedAnalystId).toBeUndefined();
+  });
+
+  it("only works while waiting, and only for analysts who cover the queue", () => {
+    expect(declineHandoff(fresh(), rafael, later).ok).toBe(false);
+    const n2Queue = unwrap(
+      requestHandoff(fresh(), { reason: "overdue_ticket", summary: "x" }, now),
+    );
+    expect(declineHandoff(n2Queue, n1Analyst, later).ok).toBe(false);
+    const employee: User = { id: "u1", name: "Ana", email: "a@nexo", role: "employee" };
+    expect(declineHandoff(waiting(), employee, later).ok).toBe(false);
   });
 });
 

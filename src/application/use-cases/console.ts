@@ -1,6 +1,7 @@
 import {
   assumeConversation,
   closeConversation,
+  declineHandoff,
   ensureAssignedAnalyst,
   handBackToAgent,
   type Conversation,
@@ -201,7 +202,11 @@ export class HandBackConversation extends ConsoleTransition {
     assertIsAnalyst(analyst);
     const { conversations, clock } = this.deps;
     const conversation = await loadAuthorizedConversation(conversations, analyst, conversationId);
-    const next = handBackToAgent(conversation, analyst.id, clock.now());
+    // Before assuming, "devolver" declines the transfer; after, it hands back.
+    const next =
+      conversation.status === "awaiting_analyst"
+        ? declineHandoff(conversation, analyst, clock.now())
+        : handBackToAgent(conversation, analyst.id, clock.now());
     if (!next.ok) return err(next.error);
     await conversations.save(next.value, conversation);
     await this.announce(

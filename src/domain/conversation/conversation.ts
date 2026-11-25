@@ -216,6 +216,29 @@ export function handBackToAgent(
   return ok({ ...backToAgent(conversation), updatedAt: now });
 }
 
+/**
+ * An analyst who covers the queue sends a transferred conversation back to the
+ * agent without taking it (the console's "Devolver ao agent" before assuming).
+ */
+export function declineHandoff(
+  conversation: Conversation,
+  analyst: User,
+  now: Date,
+): Result<Conversation, InvalidTransitionError | NotAuthorizedError> {
+  if (analyst.role !== "analyst")
+    return err(new NotAuthorizedError("Apenas analistas podem devolver."));
+  if (conversation.status !== "awaiting_analyst") {
+    return err(new InvalidTransitionError("Esta conversa não está aguardando um analista."));
+  }
+  if (
+    conversation.handoff &&
+    !analystCovers(analyst.supportLevel, conversation.handoff.targetGroup)
+  ) {
+    return err(new NotAuthorizedError(`Esta conversa é do ${conversation.handoff.targetGroup}.`));
+  }
+  return ok({ ...backToAgent(conversation), updatedAt: now });
+}
+
 export function closeConversation(
   conversation: Conversation,
   analystId: string,
