@@ -33,7 +33,12 @@ interface Props {
 const inputClass =
   "w-full rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-cta focus:ring-2 focus:ring-cta/15";
 
-const draftLabel = (id: string) => `D-${id.replace(/\D/g, "").slice(0, 3).padEnd(3, "0")}`;
+/** Short, stable draft number ("D-381") derived from the id; purely a display label. */
+export function draftLabel(id: string): string {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return `D-${(hash % 900) + 100}`;
+}
 
 function StatusBadge({ status }: { status: PendingActionDto["status"] }) {
   const map = {

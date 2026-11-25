@@ -51,7 +51,7 @@ export function TicketsPanel({
       <header className="flex items-start justify-between border-b border-rule px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-ink">
-            Chamados da {firstName(view.employee.name)}
+            Chamados de {firstName(view.employee.name)}
           </h2>
           <p className="text-xs text-ink-3">
             {tickets ? `${tickets.open} abertos · ${tickets.closed} encerrados` : "Carregando…"}
