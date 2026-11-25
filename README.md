@@ -2,7 +2,7 @@
 
 Agent de atendimento do service desk de TI da Nexo. O funcionário descreve o problema com as próprias palavras; o agent consulta os chamados dele, busca na central de ajuda, abre ou atualiza chamados (sempre com confirmação) e chama um analista quando precisa. Um console separado permite ao analista assumir a conversa, e **cada resposta do agent é explicável**: o que entendeu, o que fez e por quê.
 
-> **Status:** todas as funcionalidades do PRD estão implementadas. Falta apenas o **deploy** (ver [Deploy](#deploy)).
+> **Status:** todas as funcionalidades do PRD estão implementadas e publicadas. **Deploy:** https://nexo-assist-psi.vercel.app (ver [Deploy](#deploy)).
 
 ---
 
@@ -342,4 +342,26 @@ Trade-off da camada gratuita: o limite diário é baixo (≈20 requisições por
 
 ## Deploy
 
-⏳ Será preenchido ao final: plataforma, como foi publicado (Vercel + Neon), variáveis necessárias e como as chaves e o uso estão protegidos (limites por conversa e por 24 h, `maxDuration`, tetos de tokens, `.env` fora do repositório).
+**Link:** https://nexo-assist-psi.vercel.app
+
+- **Plataforma:** Vercel (Next.js, front e API no mesmo projeto) + **Neon** (Postgres serverless). Em hosts `*.neon.tech` o código usa o driver HTTP do Neon; localmente usa o `pg` (decisão 9).
+- **Como foi publicado:** repositório do GitHub importado na Vercel, com o `pnpm` detectado pelo `packageManager` do `package.json`. Cada push na `main` gera um novo deploy.
+- **Variáveis de ambiente** (painel da Vercel, nunca no repositório; modelo em `.env.example`):
+
+| Variável                                    | Para quê                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                              | Connection string do Neon (preferir a "pooled")                                      |
+| `GOOGLE_GENERATIVE_AI_API_KEY`              | Chave do Gemini                                                                      |
+| `SESSION_SECRET`                            | Assina o cookie de sessão (≥ 32 caracteres)                                          |
+| `LLM_MODEL`, `LLM_MODEL_OPTIONS`            | Modelo padrão e lista do seletor                                                     |
+| `CHAT_MESSAGE_LIMIT`, `DAILY_MESSAGE_LIMIT` | Limites de uso (abaixo)                                                              |
+| `TICKETING_FAILURE_RATE`                    | `0` em produção; use ~`0.1` só para demonstrar a indisponibilidade do serviço legado |
+
+- **Banco:** o schema e os dados de exemplo entram com `pnpm db:migrate` e `pnpm db:seed`, apontando `DATABASE_URL` para o Neon. O seed é idempotente.
+- **Proteção de chaves e de custo:**
+  - chaves só em variáveis de ambiente (`.env.local` está no `.gitignore`);
+  - 30 mensagens por conversa e 150 por funcionário em 24 h (decisões 27 e 28);
+  - `maxDuration` de 60 s na rota de mensagens, no máximo 8 passos de ferramenta por mensagem e teto de 4096 tokens de saída por passo;
+  - o modelo escolhido no seletor só vale se estiver na lista do servidor (`LLM_MODEL_OPTIONS`);
+  - cabeçalhos de segurança básicos (`next.config.ts`).
+- **Limitação conhecida:** com a chave gratuita do Gemini o limite é de ~20 requisições por dia por modelo (≈ 5 a 10 mensagens). Ao esgotar, o chat avisa, guarda a mensagem e oferece "Tentar novamente" e "Falar com um analista". Para uso contínuo, ative o faturamento no projeto do Google ou troque o modelo.
