@@ -14,6 +14,7 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET deve ter ao menos 32 caracteres"),
   TICKETING_FAILURE_RATE: z.coerce.number().min(0).max(1).default(0),
   CHAT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
+  DAILY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(150),
 });
 
 export type Env = z.infer<typeof schema>;

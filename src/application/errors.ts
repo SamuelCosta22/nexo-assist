@@ -31,3 +31,13 @@ export class AgentUnavailableError extends DomainError {
     super(detail ?? "O assistente está indisponível no momento.");
   }
 }
+
+/** Cost and abuse guard: a rolling 24h cap on messages per employee, across all conversations. */
+export class DailyLimitReachedError extends DomainError {
+  readonly code = "DAILY_LIMIT_REACHED";
+  constructor(readonly limit: number) {
+    super(
+      `Você atingiu o limite de ${limit} mensagens nas últimas 24 horas. Tente de novo mais tarde ou ligue no ramal 4000.`,
+    );
+  }
+}

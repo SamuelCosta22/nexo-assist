@@ -3,7 +3,7 @@ import type { AgentTrace } from "@/domain/agent/trace";
 import { startConversation, type Conversation } from "@/domain/conversation/conversation";
 import type { AgentEvent, AgentPort, AgentTurn } from "@/application/ports/agent";
 import { SendEmployeeMessage, type ChatEvent } from "@/application/use-cases/send-employee-message";
-import { ana, carla } from "../support/in-memory";
+import { InMemoryUsage, ana, carla } from "../support/in-memory";
 import { buildHarness } from "../support/harness";
 
 function traceWith(confidence: number): AgentTrace {
@@ -46,6 +46,8 @@ function buildHarnessSend(h: Awaited<ReturnType<typeof setup>>, agent: ScriptedA
     clock: h.clock,
     ids: h.ids,
     messageLimit: 30,
+    usage: new InMemoryUsage(h.messages),
+    dailyLimit: 150,
   });
 }
 
@@ -55,8 +57,8 @@ async function collect(stream: AsyncGenerator<ChatEvent>) {
   return events;
 }
 
-async function setup(agent: ScriptedAgent, patch: Partial<Conversation> = {}) {
-  const h = buildHarness({ agent });
+async function setup(agent: ScriptedAgent, patch: Partial<Conversation> = {}, dailyLimit?: number) {
+  const h = buildHarness({ agent, ...(dailyLimit ? { dailyLimit } : {}) });
   await h.conversations.create({
     ...startConversation({ id: "c1", employeeId: ana.id, now: h.clock.now() }),
     ...patch,
@@ -106,6 +108,49 @@ describe("SendEmployeeMessage", () => {
     expect(begun.ok).toBe(false);
     if (!begun.ok) expect(begun.error.code).toBe("MESSAGE_LIMIT_REACHED");
     expect(h.messages.rows).toHaveLength(0);
+  });
+
+  it("enforces a rolling 24h cap per employee across conversations", async () => {
+    const h = await setup(new ScriptedAgent(), {}, 2);
+    const at = h.clock.now();
+    for (const [i, offset] of [
+      [0, 26],
+      [1, 3],
+      [2, 1],
+    ] as const) {
+      await h.messages.append({
+        id: `old-${i}`,
+        conversationId: "other",
+        role: "employee",
+        authorId: ana.id,
+        content: "x",
+        blocks: [],
+        createdAt: new Date(at.getTime() - offset * 3_600_000),
+      });
+    }
+    // Two messages inside the window (3h and 1h ago); the 26h-old one does not count.
+    const blocked = await h.send!.begin(ana, "c1", "mais uma");
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error.code).toBe("DAILY_LIMIT_REACHED");
+    expect(h.messages.rows.filter((m) => m.conversationId === "c1")).toHaveLength(0);
+  });
+
+  it("does not meter messages that go to a human", async () => {
+    const h = await setup(
+      new ScriptedAgent(),
+      { status: "with_analyst", assignedAnalystId: "an-rafael" },
+      1,
+    );
+    await h.messages.append({
+      id: "old",
+      conversationId: "other",
+      role: "employee",
+      authorId: ana.id,
+      content: "x",
+      blocks: [],
+      createdAt: h.clock.now(),
+    });
+    expect((await h.send!.begin(ana, "c1", "obrigada")).ok).toBe(true);
   });
 
   it("rejects empty and oversized messages", async () => {

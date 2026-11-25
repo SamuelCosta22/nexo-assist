@@ -1,0 +1,1 @@
+CREATE INDEX "messages_author_idx" ON "messages" USING btree ("author_id","created_at");

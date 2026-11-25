@@ -61,7 +61,10 @@ export function toModelMessages(history: readonly Message[]): ChatMessage[] {
         messages.push({ role: "user", content: message.content });
         break;
       case "agent":
-        messages.push({ role: "assistant", content: message.content + describeBlocks(message.blocks) });
+        messages.push({
+          role: "assistant",
+          content: message.content + describeBlocks(message.blocks),
+        });
         break;
       case "analyst":
         messages.push({

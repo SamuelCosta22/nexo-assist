@@ -277,3 +277,51 @@ describe("DrizzlePendingActionRepository", () => {
     });
   });
 });
+
+describe("DrizzleUsageRepository", () => {
+  it("counts only the employee's own messages inside the window", async () => {
+    const { DrizzleUsageRepository } =
+      await import("@/infrastructure/persistence/repositories/usage-repository");
+    await new DrizzleConversationRepository(db).create(
+      startConversation({ id: "c1", employeeId: ana.id, now: clock.now() }),
+    );
+    const messages = new DrizzleMessageRepository(db);
+    const hoursAgo = (h: number) => new Date(clock.now().getTime() - h * 3_600_000);
+    const base = { conversationId: "c1", blocks: [] };
+    await messages.append({
+      ...base,
+      id: "a",
+      role: "employee",
+      authorId: ana.id,
+      content: "recente",
+      createdAt: hoursAgo(1),
+    });
+    await messages.append({
+      ...base,
+      id: "b",
+      role: "employee",
+      authorId: ana.id,
+      content: "antiga",
+      createdAt: hoursAgo(30),
+    });
+    await messages.append({
+      ...base,
+      id: "c",
+      role: "agent",
+      content: "resposta",
+      createdAt: hoursAgo(1),
+    });
+    await messages.append({
+      ...base,
+      id: "d",
+      role: "employee",
+      authorId: rafael.id,
+      content: "de outra pessoa",
+      createdAt: hoursAgo(1),
+    });
+
+    const usage = new DrizzleUsageRepository(db);
+    expect(await usage.countEmployeeMessagesSince(ana.id, hoursAgo(24))).toBe(1);
+    expect(await usage.countEmployeeMessagesSince(ana.id, hoursAgo(48))).toBe(2);
+  });
+});

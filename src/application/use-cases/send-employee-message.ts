@@ -18,7 +18,9 @@ import type {
   ConversationRepository,
   MessageRepository,
   PendingActionRepository,
+  UsageRepository,
 } from "../ports/repositories";
+import { DailyLimitReachedError } from "../errors";
 import { assertIsEmployee } from "../support/access";
 import { loadAuthorizedConversation } from "../support/conversation-guard";
 import { deterministicTrace } from "../support/deterministic-trace";
@@ -27,6 +29,7 @@ import { newMessageBase } from "../support/ids";
 import { agentMessage, employeeMessage } from "../support/messages";
 
 export const MAX_MESSAGE_LENGTH = 2000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 /** How many past messages the model sees: bounds cost per turn (README, efficiency). */
 export const HISTORY_WINDOW = 20;
 
@@ -61,6 +64,9 @@ export interface SendEmployeeMessageDependencies {
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly messageLimit: number;
+  readonly usage: UsageRepository;
+  /** Messages per employee in a rolling 24h window (protects model cost). */
+  readonly dailyLimit: number;
 }
 
 /**
@@ -78,7 +84,9 @@ export class SendEmployeeMessage {
     actor: User,
     conversationId: string,
     rawContent: string,
-  ): Promise<Result<MessageTurn, MessageLimitReachedError | InvalidMessageError>> {
+  ): Promise<
+    Result<MessageTurn, MessageLimitReachedError | DailyLimitReachedError | InvalidMessageError>
+  > {
     assertIsEmployee(actor);
     const content = rawContent.trim();
     if (content.length === 0) return err(new InvalidMessageError("A mensagem está vazia."));
@@ -88,6 +96,14 @@ export class SendEmployeeMessage {
 
     const { conversations, messages, clock, ids, messageLimit } = this.deps;
     const conversation = await loadAuthorizedConversation(conversations, actor, conversationId);
+    // Only messages the agent would answer cost money, so only those are metered.
+    if (canAgentReply(conversation)) {
+      const since = new Date(clock.now().getTime() - DAY_MS);
+      const sent = await this.deps.usage.countEmployeeMessagesSince(actor.id, since);
+      if (sent >= this.deps.dailyLimit)
+        return err(new DailyLimitReachedError(this.deps.dailyLimit));
+    }
+
     const registered = registerEmployeeMessage(conversation, content, messageLimit, clock.now());
     if (!registered.ok) return err(registered.error);
 

@@ -52,3 +52,9 @@ export interface PendingActionRepository {
   findPendingByConversation(conversationId: string): Promise<PendingAction | undefined>;
   findManyByIds(ids: readonly string[]): Promise<PendingAction[]>;
 }
+
+/** Usage counters behind the cost/abuse guard. */
+export interface UsageRepository {
+  /** Messages the employee wrote since `since`, in any conversation. */
+  countEmployeeMessagesSince(employeeId: string, since: Date): Promise<number>;
+}

@@ -145,7 +145,10 @@ export const messages = pgTable(
     trace: jsonb("trace").$type<AgentTrace>(),
     createdAt: ts("created_at").notNull(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.seq)],
+  (t) => [
+    index("messages_conversation_idx").on(t.conversationId, t.seq),
+    index("messages_author_idx").on(t.authorId, t.createdAt),
+  ],
 );
 
 export const pendingActions = pgTable(

@@ -37,6 +37,7 @@ import { DrizzleConversationRepository } from "./persistence/repositories/conver
 import { DrizzleHelpdeskRepository } from "./persistence/repositories/helpdesk-repository";
 import { DrizzleMessageRepository } from "./persistence/repositories/message-repository";
 import { DrizzlePendingActionRepository } from "./persistence/repositories/pending-action-repository";
+import { DrizzleUsageRepository } from "./persistence/repositories/usage-repository";
 import { DrizzleUserRepository } from "./persistence/repositories/user-repository";
 import { DrizzleTicketingGateway } from "./ticketing/drizzle-ticketing-gateway";
 import { FlakyTicketingGateway } from "./ticketing/flaky-ticketing-gateway";
@@ -121,6 +122,8 @@ function build() {
       clock,
       ids,
       messageLimit: env.CHAT_MESSAGE_LIMIT,
+      usage: new DrizzleUsageRepository(db),
+      dailyLimit: env.DAILY_MESSAGE_LIMIT,
     }),
     confirmPendingAction: new ConfirmPendingAction(pendingDeps),
     cancelPendingAction: new CancelPendingAction(pendingDeps),

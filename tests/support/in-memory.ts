@@ -15,6 +15,7 @@ import type {
   HelpdeskRepository,
   MessageRepository,
   PendingActionRepository,
+  UsageRepository,
   UserRepository,
 } from "@/application/ports/repositories";
 import type { TicketingGateway } from "@/application/ports/ticketing-gateway";
@@ -122,6 +123,15 @@ export class InMemoryPendingActions implements PendingActionRepository {
       const action = this.rows.get(id);
       return action ? [action] : [];
     });
+  }
+}
+
+export class InMemoryUsage implements UsageRepository {
+  constructor(private readonly messages: InMemoryMessages) {}
+  async countEmployeeMessagesSince(employeeId: string, since: Date) {
+    return this.messages.rows.filter(
+      (m) => m.role === "employee" && m.authorId === employeeId && m.createdAt >= since,
+    ).length;
   }
 }
 

@@ -15,6 +15,7 @@ import {
   InMemoryMessages,
   InMemoryPendingActions,
   InMemoryTicketing,
+  InMemoryUsage,
   InMemoryUsers,
   SequentialIds,
   ana,
@@ -27,7 +28,12 @@ import type { Article } from "@/domain/helpdesk/article";
 
 /** Wires the application layer against in-memory adapters. */
 export function buildHarness(
-  options: { tickets?: Ticket[]; articles?: Article[]; agent?: AgentPort } = {},
+  options: {
+    tickets?: Ticket[];
+    articles?: Article[];
+    agent?: AgentPort;
+    dailyLimit?: number;
+  } = {},
 ) {
   const clock = new FixedClock(sp("2026-11-24T09:43:00"));
   const ids = new SequentialIds();
@@ -75,6 +81,8 @@ export function buildHarness(
         clock,
         ids,
         messageLimit: 30,
+        usage: new InMemoryUsage(messages),
+        dailyLimit: options.dailyLimit ?? 150,
       })
     : undefined;
 

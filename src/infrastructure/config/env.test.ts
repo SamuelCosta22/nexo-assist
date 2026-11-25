@@ -13,6 +13,7 @@ describe("parseEnv", () => {
     expect(env.LLM_MODEL).toBe("gemini-3.5-flash");
     expect(env.TICKETING_FAILURE_RATE).toBe(0);
     expect(env.CHAT_MESSAGE_LIMIT).toBe(30);
+    expect(env.DAILY_MESSAGE_LIMIT).toBe(150);
   });
 
   it("coerces numeric strings", () => {
