@@ -27,6 +27,8 @@ interface Props {
   isLast: boolean;
   readOnly: boolean;
   actions: ChatActions;
+  /** The analyst console reuses the blocks but can only look at drafts. */
+  viewer?: "employee" | "analyst";
 }
 
 function OptionsBlock({
@@ -113,7 +115,7 @@ function TicketListBlock({
   );
 }
 
-function AgentBlocks({ message, pendingActions, isLast, readOnly, actions }: Props) {
+export function AgentBlocks({ message, pendingActions, isLast, readOnly, actions, viewer }: Props) {
   const interactive = isLast && !readOnly;
   return (
     <div className="space-y-3">
@@ -136,6 +138,7 @@ function AgentBlocks({ message, pendingActions, isLast, readOnly, actions }: Pro
               <PendingActionCard
                 key={index}
                 action={action}
+                readOnly={viewer === "analyst"}
                 busy={actions.busyActionId === action.id}
                 onConfirm={() => actions.confirm(action.id)}
                 onCancel={() => actions.cancel(action.id)}

@@ -22,6 +22,8 @@ export interface DraftEditsInput {
 
 interface Props {
   action: PendingActionDto;
+  /** Analysts see drafts but cannot confirm them: only the employee can. */
+  readOnly?: boolean;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -57,7 +59,7 @@ function StatusBadge({ status }: { status: PendingActionDto["status"] }) {
  * The draft awaiting confirmation (PRD: "o agent mostra um rascunho e só cria
  * ou atualiza o chamado depois da confirmação do funcionário").
  */
-export function PendingActionCard({ action, busy, onConfirm, onCancel, onEdit }: Props) {
+export function PendingActionCard({ action, readOnly, busy, onConfirm, onCancel, onEdit }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | undefined>();
@@ -81,6 +83,7 @@ export function PendingActionCard({ action, busy, onConfirm, onCancel, onEdit }:
         </div>
         <ActionFooter
           action={action}
+          readOnly={readOnly}
           busy={busy}
           onConfirm={onConfirm}
           onCancel={onCancel}
@@ -226,6 +229,7 @@ export function PendingActionCard({ action, busy, onConfirm, onCancel, onEdit }:
       {!editing && (
         <ActionFooter
           action={action}
+          readOnly={readOnly}
           busy={busy}
           onConfirm={onConfirm}
           onCancel={onCancel}
@@ -239,6 +243,7 @@ export function PendingActionCard({ action, busy, onConfirm, onCancel, onEdit }:
 
 function ActionFooter({
   action,
+  readOnly,
   busy,
   onConfirm,
   onCancel,
@@ -246,6 +251,7 @@ function ActionFooter({
   confirmLabel,
 }: {
   action: PendingActionDto;
+  readOnly?: boolean | undefined;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -271,6 +277,13 @@ function ActionFooter({
       <footer className="flex items-center gap-2 border-t border-rule bg-desk px-5 py-3 text-sm text-ink-3">
         <X className="size-4" />
         {action.status === "cancelled" ? "Rascunho cancelado" : "Este rascunho foi substituído"}
+      </footer>
+    );
+  }
+  if (readOnly) {
+    return (
+      <footer className="border-t border-rule bg-desk px-5 py-3 text-sm text-ink-3">
+        Aguardando a confirmação do funcionário
       </footer>
     );
   }
