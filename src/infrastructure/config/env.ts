@@ -1,0 +1,37 @@
+import { z } from "zod";
+
+/**
+ * Typed, validated environment. Fails fast with a readable message instead of
+ * letting an undefined secret surface as an obscure runtime error later.
+ *
+ * Parsing is lazy (first `getEnv()` call) so that importing this module during
+ * `next build` does not require every secret to be present.
+ */
+const schema = z.object({
+  DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória"),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, "GOOGLE_GENERATIVE_AI_API_KEY é obrigatória"),
+  LLM_MODEL: z.string().min(1).default("gemini-2.5-flash"),
+  SESSION_SECRET: z.string().min(32, "SESSION_SECRET deve ter ao menos 32 caracteres"),
+  TICKETING_FAILURE_RATE: z.coerce.number().min(0).max(1).default(0),
+  CHAT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
+});
+
+export type Env = z.infer<typeof schema>;
+
+export function parseEnv(source: Record<string, string | undefined>): Env {
+  const parsed = schema.safeParse(source);
+  if (!parsed.success) {
+    const problems = parsed.error.issues
+      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Configuração de ambiente inválida:\n${problems}`);
+  }
+  return parsed.data;
+}
+
+let cached: Env | undefined;
+
+export function getEnv(): Env {
+  cached ??= parseEnv(process.env);
+  return cached;
+}
