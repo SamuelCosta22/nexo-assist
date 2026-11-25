@@ -38,7 +38,11 @@ function toAgentError(error: unknown): AgentQuotaExceededError | AgentUnavailabl
 
 /** Hard cap on the tool loop: bounds latency and cost per turn. */
 const MAX_STEPS = 8;
-const MAX_OUTPUT_TOKENS = 900;
+/**
+ * Per-step output cap. Gemini's internal reasoning counts toward it, so a tight
+ * value (900) made a step end with finishReason "length" and no text or tool call.
+ */
+const MAX_OUTPUT_TOKENS = 4096;
 
 const DEFAULT_DECISION = {
   understanding: "(o agent não registrou o entendimento)",
