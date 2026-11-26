@@ -14,7 +14,7 @@ const schema = z.object({
   /** Models offered in the chat's selector (comma separated). The default model is always included. */
   LLM_MODEL_OPTIONS: z
     .string()
-    .default("gemini-3.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash,gemini-2.5-flash-lite"),
+    .default("gemini-3.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash"),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET deve ter ao menos 32 caracteres"),
   TICKETING_FAILURE_RATE: z.coerce.number().min(0).max(1).default(0),
   CHAT_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),
