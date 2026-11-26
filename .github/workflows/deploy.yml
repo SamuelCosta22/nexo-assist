@@ -1,0 +1,45 @@
+name: CI/CD
+
+on:
+  push:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  check:
+    name: Typecheck, lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  deploy:
+    name: Deploy to Vercel
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # main goes to production; every other branch gets a preview deployment.
+      - name: Set target
+        run: echo "VERCEL_TARGET=$([ "$GITHUB_REF" = "refs/heads/main" ] && echo production || echo preview)" >> "$GITHUB_ENV"
+      - run: pnpm dlx vercel pull --yes --environment=$VERCEL_TARGET --token=${{ secrets.VERCEL_TOKEN }}
+      - run: pnpm dlx vercel build $([ "$VERCEL_TARGET" = "production" ] && echo --prod) --token=${{ secrets.VERCEL_TOKEN }}
+      - run: pnpm dlx vercel deploy --prebuilt $([ "$VERCEL_TARGET" = "production" ] && echo --prod) --token=${{ secrets.VERCEL_TOKEN }}

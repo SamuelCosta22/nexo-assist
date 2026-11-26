@@ -54,15 +54,15 @@ pnpm dev                       # http://localhost:3000
 
 Variáveis de ambiente (todas validadas com Zod na primeira leitura, com mensagem clara se faltar algo):
 
-| Variável                                    | Para quê                                                                                                                                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                              | Postgres (Neon ou local)                                                                                                                                                                          |
-| `GOOGLE_GENERATIVE_AI_API_KEY`, `LLM_MODEL` | Modelo do agent (padrão `gemini-3.5-flash`)                                                                                                                                                       |
-| `LLM_MODEL_OPTIONS`                         | Modelos oferecidos no seletor do chat, separados por vírgula (o padrão é sempre incluído). Lista padrão: `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` |
-| `SESSION_SECRET`                            | Assina o cookie de sessão (mínimo 32 caracteres)                                                                                                                                                  |
-| `TICKETING_FAILURE_RATE`                    | 0 a 1: chance de o serviço de chamados "legado" ficar indisponível numa chamada. Use `0.3` para ver o tratamento de falha ao vivo                                                                 |
-| `CHAT_MESSAGE_LIMIT`                        | Mensagens do funcionário por conversa (padrão 30, regra do PRD)                                                                                                                                   |
-| `DAILY_MESSAGE_LIMIT`                       | Mensagens por funcionário em 24 h (padrão 150): proteção de custo                                                                                                                                 |
+| Variável                                    | Para quê                                                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                              | Postgres (Neon ou local)                                                                                                                                                 |
+| `GOOGLE_GENERATIVE_AI_API_KEY`, `LLM_MODEL` | Modelo do agent (padrão `gemini-3.5-flash`)                                                                                                                              |
+| `LLM_MODEL_OPTIONS`                         | Modelos oferecidos no seletor do chat, separados por vírgula (o padrão é sempre incluído). Lista padrão: `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash` |
+| `SESSION_SECRET`                            | Assina o cookie de sessão (mínimo 32 caracteres)                                                                                                                         |
+| `TICKETING_FAILURE_RATE`                    | 0 a 1: chance de o serviço de chamados "legado" ficar indisponível numa chamada. Use `0.3` para ver o tratamento de falha ao vivo                                        |
+| `CHAT_MESSAGE_LIMIT`                        | Mensagens do funcionário por conversa (padrão 30, regra do PRD)                                                                                                          |
+| `DAILY_MESSAGE_LIMIT`                       | Mensagens por funcionário em 24 h (padrão 150): proteção de custo                                                                                                        |
 
 ---
 
@@ -357,6 +357,7 @@ Trade-off da camada gratuita: o limite diário é baixo (≈20 requisições por
 | `CHAT_MESSAGE_LIMIT`, `DAILY_MESSAGE_LIMIT` | Limites de uso (abaixo)                                                              |
 | `TICKETING_FAILURE_RATE`                    | `0` em produção; use ~`0.1` só para demonstrar a indisponibilidade do serviço legado |
 
+- **CI/CD (GitHub Actions, `.github/workflows/deploy.yml`):** a cada push roda `pnpm check` (tipos, lint e testes); se passar, publica na Vercel com o CLI. A `main` vai para produção e as demais branches geram um deploy de _preview_. O deploy automático nativo da Vercel está desligado em `vercel.json` (`git.deploymentEnabled: false`) para não publicar duas vezes. Secrets no GitHub (Settings → Secrets and variables → Actions): `VERCEL_TOKEN` (vercel.com/account/tokens), `VERCEL_ORG_ID` e `VERCEL_PROJECT_ID` (em `.vercel/project.json`, criado por `pnpm dlx vercel link`).
 - **Banco:** o schema e os dados de exemplo entram com `pnpm db:migrate` e `pnpm db:seed`, apontando `DATABASE_URL` para o Neon. O seed é idempotente.
 - **Proteção de chaves e de custo:**
   - chaves só em variáveis de ambiente (`.env.local` está no `.gitignore`);
